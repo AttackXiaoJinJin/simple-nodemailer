@@ -63,17 +63,17 @@ class SMTPConnection extends EventEmitter {
 
     this.name = this.options.name || this._getHostname();
 
-    this.customAuth = new Map();
-    Object.keys(this.options.customAuth || {}).forEach(key => {
-      let mapKey = (key || '')
-        .toString()
-        .trim()
-        .toUpperCase();
-      if (!mapKey) {
-        return;
-      }
-      this.customAuth.set(mapKey, this.options.customAuth[key]);
-    });
+    // this.customAuth = new Map();
+    // Object.keys(this.options.customAuth || {}).forEach(key => {
+    //   let mapKey = (key || '')
+    //     .toString()
+    //     .trim()
+    //     .toUpperCase();
+    //   if (!mapKey) {
+    //     return;
+    //   }
+    //   this.customAuth.set(mapKey, this.options.customAuth[key]);
+    // });
 
     /**
      * Expose version nr, just for the reference
@@ -224,107 +224,33 @@ class SMTPConnection extends EventEmitter {
       this._socket.on('error', this._onSocketError);
     };
 
-    if (this.options.connection) {
-      // connection is already opened
-      this._socket = this.options.connection;
-      if (this.secureConnection && !this.alreadySecured) {
-        setImmediate(() =>
-          this._upgradeConnection(err => {
-            if (err) {
-              this._onError(new Error('Error initiating TLS - ' + (err.message || err)), 'ETLS', false, 'CONN');
-              return;
-            }
-            this._onConnect();
-          })
-        );
-      } else {
-        setImmediate(() => this._onConnect());
-      }
-      return;
-    } else if (this.options.socket) {
-      // socket object is set up but not yet connected
-      this._socket = this.options.socket;
-      return shared.resolveHostname(opts, (err, resolved) => {
-        if (err) {
-          return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
-        }
-        // this.logger.debug(
-        //   {
-        //     tnx: 'dns',
-        //     source: opts.host,
-        //     resolved: resolved.host,
-        //     cached: !!resolved._cached
-        //   },
-        //   'Resolved %s as %s [cache %s]',
-        //   opts.host,
-        //   resolved.host,
-        //   resolved._cached ? 'hit' : 'miss'
-        // );
-        Object.keys(resolved).forEach(key => {
-          if (key.charAt(0) !== '_' && resolved[key]) {
-            opts[key] = resolved[key];
-          }
-        });
-        try {
-          this._socket.connect(this.port, this.host, () => {
-            this._socket.setKeepAlive(true);
-            this._onConnect();
-          });
-          setupConnectionHandlers();
-        } catch (E) {
-          return setImmediate(() => this._onError(E, 'ECONNECTION', false, 'CONN'));
-        }
-      });
-    } else if (this.secureConnection) {
-      // connect using tls
-      if (this.options.tls) {
-        Object.keys(this.options.tls).forEach(key => {
-          opts[key] = this.options.tls[key];
-        });
-      }
-      return shared.resolveHostname(opts, (err, resolved) => {
-        if (err) {
-          return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
-        }
-
-        Object.keys(resolved).forEach(key => {
-          if (key.charAt(0) !== '_' && resolved[key]) {
-            opts[key] = resolved[key];
-          }
-        });
-        try {
-          this._socket = tls.connect(opts, () => {
-            this._socket.setKeepAlive(true);
-            this._onConnect();
-          });
-          setupConnectionHandlers();
-        } catch (E) {
-          return setImmediate(() => this._onError(E, 'ECONNECTION', false, 'CONN'));
-        }
-      });
-    } else {
-      // connect using plaintext
-      return shared.resolveHostname(opts, (err, resolved) => {
-        if (err) {
-          return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
-        }
-
-        Object.keys(resolved).forEach(key => {
-          if (key.charAt(0) !== '_' && resolved[key]) {
-            opts[key] = resolved[key];
-          }
-        });
-        try {
-          this._socket = net.connect(opts, () => {
-            this._socket.setKeepAlive(true);
-            this._onConnect();
-          });
-          setupConnectionHandlers();
-        } catch (E) {
-          return setImmediate(() => this._onError(E, 'ECONNECTION', false, 'CONN'));
-        }
+    // connect using tls
+    if (this.options.tls) {
+      Object.keys(this.options.tls).forEach(key => {
+        opts[key] = this.options.tls[key];
       });
     }
+    return shared.resolveHostname(opts, (err, resolved) => {
+      if (err) {
+        return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
+      }
+
+      Object.keys(resolved).forEach(key => {
+        if (key.charAt(0) !== '_' && resolved[key]) {
+          opts[key] = resolved[key];
+        }
+      });
+      try {
+        this._socket = tls.connect(opts, () => {
+          this._socket.setKeepAlive(true);
+          this._onConnect();
+        });
+        setupConnectionHandlers();
+      } catch (E) {
+        return setImmediate(() => this._onError(E, 'ECONNECTION', false, 'CONN'));
+      }
+    });
+
   }
 
   /**
@@ -372,142 +298,24 @@ class SMTPConnection extends EventEmitter {
 
     this._auth = authData || {};
     // Select SASL authentication method
-    this._authMethod =
-      (this._auth.method || '')
-        .toString()
-        .trim()
-        .toUpperCase() || false;
 
-    if (!this._authMethod && this._auth.oauth2 && !this._auth.credentials) {
-      this._authMethod = 'XOAUTH2';
-    } else if (!this._authMethod || (this._authMethod === 'XOAUTH2' && !this._auth.oauth2)) {
-      // use first supported
-      this._authMethod = (this._supportedAuth[0] || 'PLAIN').toUpperCase().trim();
-    }
+    this._authMethod = (this._supportedAuth[0]).toUpperCase().trim();
 
-    if (this._authMethod !== 'XOAUTH2' && (!this._auth.credentials || !this._auth.credentials.user || !this._auth.credentials.pass)) {
-      if (this._auth.user && this._auth.pass) {
-        this._auth.credentials = {
-          user: this._auth.user,
-          pass: this._auth.pass,
-          options: this._auth.options
-        };
-      } else {
-        return callback(this._formatError('Missing credentials for "' + this._authMethod + '"', 'EAUTH', false, 'API'));
-      }
-    }
+    this._responseActions.push(str => {
+      this._actionAUTHComplete(str, callback);
+    });
+    this._sendCommand(
+      'AUTH PLAIN ' +
+      Buffer.from(
+        //this._auth.user+'\u0000'+
+        '\u0000' + // skip authorization identity as it causes problems with some servers
+        this._auth.credentials.user +
+        '\u0000' +
+        this._auth.credentials.pass,
+        'utf-8'
+      ).toString('base64')
+    );
 
-    if (this.customAuth.has(this._authMethod)) {
-      let handler = this.customAuth.get(this._authMethod);
-      let lastResponse;
-      let returned = false;
-
-      let resolve = () => {
-        if (returned) {
-          return;
-        }
-        returned = true;
-        this.authenticated = true;
-        callback(null, true);
-      };
-
-      let reject = err => {
-        if (returned) {
-          return;
-        }
-        returned = true;
-        callback(this._formatError(err, 'EAUTH', lastResponse, 'AUTH ' + this._authMethod));
-      };
-
-      let handlerResponse = handler({
-        auth: this._auth,
-        method: this._authMethod,
-
-        extensions: [].concat(this._supportedExtensions),
-        authMethods: [].concat(this._supportedAuth),
-        maxAllowedSize: this._maxAllowedSize || false,
-
-        sendCommand: (cmd, done) => {
-          let promise;
-
-          if (!done) {
-            promise = new Promise((resolve, reject) => {
-              done = shared.callbackPromise(resolve, reject);
-            });
-          }
-
-          this._responseActions.push(str => {
-            lastResponse = str;
-
-            let codes = str.match(/^(\d+)(?:\s(\d+\.\d+\.\d+))?\s/);
-            let data = {
-              command: cmd,
-              response: str
-            };
-            if (codes) {
-              data.status = Number(codes[1]) || 0;
-              if (codes[2]) {
-                data.code = codes[2];
-              }
-              data.text = str.substr(codes[0].length);
-            } else {
-              data.text = str;
-              data.status = 0; // just in case we need to perform numeric comparisons
-            }
-            done(null, data);
-          });
-          setImmediate(() => this._sendCommand(cmd));
-
-          return promise;
-        },
-
-        resolve,
-        reject
-      });
-
-      if (handlerResponse && typeof handlerResponse.catch === 'function') {
-        // a promise was returned
-        handlerResponse.then(resolve).catch(reject);
-      }
-
-      return;
-    }
-
-    switch (this._authMethod) {
-      case 'XOAUTH2':
-        this._handleXOauth2Token(false, callback);
-        return;
-      case 'LOGIN':
-        this._responseActions.push(str => {
-          this._actionAUTH_LOGIN_USER(str, callback);
-        });
-        this._sendCommand('AUTH LOGIN');
-        return;
-      case 'PLAIN':
-        this._responseActions.push(str => {
-          this._actionAUTHComplete(str, callback);
-        });
-        this._sendCommand(
-          'AUTH PLAIN ' +
-          Buffer.from(
-            //this._auth.user+'\u0000'+
-            '\u0000' + // skip authorization identity as it causes problems with some servers
-            this._auth.credentials.user +
-            '\u0000' +
-            this._auth.credentials.pass,
-            'utf-8'
-          ).toString('base64')
-        );
-        return;
-      case 'CRAM-MD5':
-        this._responseActions.push(str => {
-          this._actionAUTH_CRAM_MD5(str, callback);
-        });
-        this._sendCommand('AUTH CRAM-MD5');
-        return;
-    }
-
-    return callback(this._formatError('Unknown authentication method "' + this._authMethod + '"', 'EAUTH', false, 'API'));
   }
 
   /**
@@ -536,7 +344,7 @@ class SMTPConnection extends EventEmitter {
 
     // ensure that callback is only called once
     let returned = false;
-    let callback = function() {
+    let callback = function () {
       if (returned) {
         return;
       }
@@ -809,31 +617,16 @@ class SMTPConnection extends EventEmitter {
    * @param {Boolean} force If true, ignores _processing flag
    */
   _processResponse() {
+    //不能删，可能为false
     if (!this._responseQueue.length) {
       return false;
     }
 
-    let str = (this.lastServerResponse = (this._responseQueue.shift() || '').toString());
-
-    if (/^\d+-/.test(str.split('\n').pop())) {
-      // keep waiting for the final part of multiline response
-      return;
-    }
-
-
-    if (!str.trim()) {
-      // skip unexpected empty lines
-      setImmediate(() => this._processResponse(true));
-    }
-
+    let str = (this.lastServerResponse = (this._responseQueue.shift()).toString());
     let action = this._responseActions.shift();
 
-    if (typeof action === 'function') {
-      action.call(this, str);
-      setImmediate(() => this._processResponse(true));
-    } else {
-      return this._onError(new Error('Unexpected Response'), 'EPROTOCOL', str, 'CONN');
-    }
+    action.call(this, str);
+    setImmediate(() => this._processResponse(true));
   }
 
   /**
@@ -867,133 +660,23 @@ class SMTPConnection extends EventEmitter {
     let args = [];
     let useSmtpUtf8 = false;
 
-    this._envelope = envelope || {};
-    this._envelope.from = ((this._envelope.from && this._envelope.from.address) || this._envelope.from || '').toString().trim();
+    this._envelope = envelope
 
-    this._envelope.to = [].concat(this._envelope.to || []).map(to => ((to && to.address) || to || '').toString().trim());
 
-    if (!this._envelope.to.length) {
-      return callback(this._formatError('No recipients defined', 'EENVELOPE', false, 'API'));
-    }
 
-    if (this._envelope.from && /[\r\n<>]/.test(this._envelope.from)) {
-      return callback(this._formatError('Invalid sender ' + JSON.stringify(this._envelope.from), 'EENVELOPE', false, 'API'));
-    }
-
-    // check if the sender address uses only ASCII characters,
-    // otherwise require usage of SMTPUTF8 extension
-    if (/[\x80-\uFFFF]/.test(this._envelope.from)) {
-      useSmtpUtf8 = true;
-    }
-
-    for (let i = 0, len = this._envelope.to.length; i < len; i++) {
-      if (!this._envelope.to[i] || /[\r\n<>]/.test(this._envelope.to[i])) {
-        return callback(this._formatError('Invalid recipient ' + JSON.stringify(this._envelope.to[i]), 'EENVELOPE', false, 'API'));
-      }
-
-      // check if the recipients addresses use only ASCII characters,
-      // otherwise require usage of SMTPUTF8 extension
-      if (/[\x80-\uFFFF]/.test(this._envelope.to[i])) {
-        useSmtpUtf8 = true;
-      }
-    }
 
     // clone the recipients array for latter manipulation
-    this._envelope.rcptQueue = JSON.parse(JSON.stringify(this._envelope.to || []));
+    // this._envelope.rcptQueue = JSON.parse(JSON.stringify(this._envelope.to || []));
+    this._envelope.rcptQueue = JSON.parse(JSON.stringify(this._envelope.to));
     this._envelope.rejected = [];
     this._envelope.rejectedErrors = [];
     this._envelope.accepted = [];
-
-    if (this._envelope.dsn) {
-      try {
-        this._envelope.dsn = this._setDsnEnvelope(this._envelope.dsn);
-      } catch (err) {
-        return callback(this._formatError('Invalid DSN ' + err.message, 'EENVELOPE', false, 'API'));
-      }
-    }
 
     this._responseActions.push(str => {
       this._actionMAIL(str, callback);
     });
 
-    // If the server supports SMTPUTF8 and the envelope includes an internationalized
-    // email address then append SMTPUTF8 keyword to the MAIL FROM command
-    if (useSmtpUtf8 && this._supportedExtensions.includes('SMTPUTF8')) {
-      args.push('SMTPUTF8');
-      this._usingSmtpUtf8 = true;
-    }
-
-    // If the server supports 8BITMIME and the message might contain non-ascii bytes
-    // then append the 8BITMIME keyword to the MAIL FROM command
-    if (this._envelope.use8BitMime && this._supportedExtensions.includes('8BITMIME')) {
-      args.push('BODY=8BITMIME');
-      this._using8BitMime = true;
-    }
-
-    if (this._envelope.size && this._supportedExtensions.includes('SIZE')) {
-      args.push('SIZE=' + this._envelope.size);
-    }
-
-    // If the server supports DSN and the envelope includes an DSN prop
-    // then append DSN params to the MAIL FROM command
-    if (this._envelope.dsn && this._supportedExtensions.includes('DSN')) {
-      if (this._envelope.dsn.ret) {
-        args.push('RET=' + shared.encodeXText(this._envelope.dsn.ret));
-      }
-      if (this._envelope.dsn.envid) {
-        args.push('ENVID=' + shared.encodeXText(this._envelope.dsn.envid));
-      }
-    }
-
     this._sendCommand('MAIL FROM:<' + this._envelope.from + '>' + (args.length ? ' ' + args.join(' ') : ''));
-  }
-
-  _setDsnEnvelope(params) {
-    let ret = (params.ret || params.return || '').toString().toUpperCase() || null;
-    if (ret) {
-      switch (ret) {
-        case 'HDRS':
-        case 'HEADERS':
-          ret = 'HDRS';
-          break;
-        case 'FULL':
-        case 'BODY':
-          ret = 'FULL';
-          break;
-      }
-    }
-
-    if (ret && !['FULL', 'HDRS'].includes(ret)) {
-      throw new Error('ret: ' + JSON.stringify(ret));
-    }
-
-    let envid = (params.envid || params.id || '').toString() || null;
-
-    let notify = params.notify || null;
-    if (notify) {
-      if (typeof notify === 'string') {
-        notify = notify.split(',');
-      }
-      notify = notify.map(n => n.trim().toUpperCase());
-      let validNotify = ['NEVER', 'SUCCESS', 'FAILURE', 'DELAY'];
-      let invaliNotify = notify.filter(n => !validNotify.includes(n));
-      if (invaliNotify.length || (notify.length > 1 && notify.includes('NEVER'))) {
-        throw new Error('notify: ' + JSON.stringify(notify.join(',')));
-      }
-      notify = notify.join(',');
-    }
-
-    let orcpt = (params.orcpt || params.recipient || '').toString() || null;
-    if (orcpt && orcpt.indexOf(';') < 0) {
-      orcpt = 'rfc822;' + orcpt;
-    }
-
-    return {
-      ret,
-      envid,
-      notify,
-      orcpt
-    };
   }
 
   _getDsnRcptToArgs() {
@@ -1015,18 +698,9 @@ class SMTPConnection extends EventEmitter {
     let dataStream = new DataStream();
     let logStream;
 
-    if (this.options.lmtp) {
-      this._envelope.accepted.forEach((recipient, i) => {
-        let final = i === this._envelope.accepted.length - 1;
-        this._responseActions.push(str => {
-          this._actionLMTPStream(recipient, final, str, callback);
-        });
-      });
-    } else {
-      this._responseActions.push(str => {
-        this._actionSMTPStream(str, callback);
-      });
-    }
+    this._responseActions.push(str => {
+      this._actionSMTPStream(str, callback);
+    });
 
     dataStream.pipe(this._socket, {
       end: false
@@ -1052,18 +726,8 @@ class SMTPConnection extends EventEmitter {
   _actionGreeting(str) {
     clearTimeout(this._greetingTimeout);
 
-    if (str.substr(0, 3) !== '220') {
-      this._onError(new Error('Invalid greeting. response=' + str), 'EPROTOCOL', str, 'CONN');
-      return;
-    }
-
-    if (this.options.lmtp) {
-      this._responseActions.push(this._actionLHLO);
-      this._sendCommand('LHLO ' + this.name);
-    } else {
-      this._responseActions.push(this._actionEHLO);
-      this._sendCommand('EHLO ' + this.name);
-    }
+    this._responseActions.push(this._actionEHLO);
+    this._sendCommand('EHLO ' + this.name);
   }
 
   /**
@@ -1184,7 +848,6 @@ class SMTPConnection extends EventEmitter {
 
     // assume that authentication is enabled (most probably is not though)
     this.allowsAuth = true;
-
     this.emit('connect');
   }
 
@@ -1198,12 +861,6 @@ class SMTPConnection extends EventEmitter {
   _actionSTARTTLS(str) {
     if (str.charAt(0) !== '2') {
       if (this.options.opportunisticTLS) {
-        // this.logger.info(
-        //   {
-        //     tnx: 'smtp'
-        //   },
-        //   'Failed STARTTLS upgrade, continuing unencrypted'
-        // );
         return this.emit('connect');
       }
       this._onError(new Error('Error upgrading connection with STARTTLS'), 'ETLS', str, 'STARTTLS');
@@ -1232,157 +889,15 @@ class SMTPConnection extends EventEmitter {
   }
 
   /**
-   * Handle the response for AUTH LOGIN command. We are expecting
-   * '334 VXNlcm5hbWU6' (base64 for 'Username:'). Data to be sent as
-   * response needs to be base64 encoded username. We do not need
-   * exact match but settle with 334 response in general as some
-   * hosts invalidly use a longer message than VXNlcm5hbWU6
-   *
-   * @param {String} str Message from the server
-   */
-  _actionAUTH_LOGIN_USER(str, callback) {
-    if (!/^334[ -]/.test(str)) {
-      // expecting '334 VXNlcm5hbWU6'
-      callback(this._formatError('Invalid login sequence while waiting for "334 VXNlcm5hbWU6"', 'EAUTH', str, 'AUTH LOGIN'));
-      return;
-    }
-
-    this._responseActions.push(str => {
-      this._actionAUTH_LOGIN_PASS(str, callback);
-    });
-
-    this._sendCommand(Buffer.from(this._auth.credentials.user + '', 'utf-8').toString('base64'));
-  }
-
-  /**
-   * Handle the response for AUTH CRAM-MD5 command. We are expecting
-   * '334 <challenge string>'. Data to be sent as response needs to be
-   * base64 decoded challenge string, MD5 hashed using the password as
-   * a HMAC key, prefixed by the username and a space, and finally all
-   * base64 encoded again.
-   *
-   * @param {String} str Message from the server
-   */
-  _actionAUTH_CRAM_MD5(str, callback) {
-    let challengeMatch = str.match(/^334\s+(.+)$/);
-    let challengeString = '';
-
-    if (!challengeMatch) {
-      return callback(this._formatError('Invalid login sequence while waiting for server challenge string', 'EAUTH', str, 'AUTH CRAM-MD5'));
-    } else {
-      challengeString = challengeMatch[1];
-    }
-
-    // Decode from base64
-    let base64decoded = Buffer.from(challengeString, 'base64').toString('ascii'),
-      hmac_md5 = crypto.createHmac('md5', this._auth.credentials.pass);
-
-    hmac_md5.update(base64decoded);
-
-    let hex_hmac = hmac_md5.digest('hex');
-    let prepended = this._auth.credentials.user + ' ' + hex_hmac;
-
-    this._responseActions.push(str => {
-      this._actionAUTH_CRAM_MD5_PASS(str, callback);
-    });
-
-    this._sendCommand(Buffer.from(prepended).toString('base64'));
-  }
-
-  /**
-   * Handles the response to CRAM-MD5 authentication, if there's no error,
-   * the user can be considered logged in. Start waiting for a message to send
-   *
-   * @param {String} str Message from the server
-   */
-  _actionAUTH_CRAM_MD5_PASS(str, callback) {
-    if (!str.match(/^235\s+/)) {
-      return callback(this._formatError('Invalid login sequence while waiting for "235"', 'EAUTH', str, 'AUTH CRAM-MD5'));
-    }
-
-    // this.logger.info(
-    //   {
-    //     tnx: 'smtp',
-    //     username: this._auth.user,
-    //     action: 'authenticated',
-    //     method: this._authMethod
-    //   },
-    //   'User %s authenticated',
-    //   JSON.stringify(this._auth.user)
-    // );
-    this.authenticated = true;
-    callback(null, true);
-  }
-
-  /**
-   * Handle the response for AUTH LOGIN command. We are expecting
-   * '334 UGFzc3dvcmQ6' (base64 for 'Password:'). Data to be sent as
-   * response needs to be base64 encoded password.
-   *
-   * @param {String} str Message from the server
-   */
-  _actionAUTH_LOGIN_PASS(str, callback) {
-    if (!/^334[ -]/.test(str)) {
-      // expecting '334 UGFzc3dvcmQ6'
-      return callback(this._formatError('Invalid login sequence while waiting for "334 UGFzc3dvcmQ6"', 'EAUTH', str, 'AUTH LOGIN'));
-    }
-
-    this._responseActions.push(str => {
-      this._actionAUTHComplete(str, callback);
-    });
-
-    this._sendCommand(Buffer.from(this._auth.credentials.pass + '', 'utf-8').toString('base64'));
-  }
-
-  /**
    * Handles the response for authentication, if there's no error,
    * the user can be considered logged in. Start waiting for a message to send
    *
    * @param {String} str Message from the server
    */
   _actionAUTHComplete(str, isRetry, callback) {
-    if (!callback && typeof isRetry === 'function') {
-      callback = isRetry;
-      isRetry = false;
-    }
+    callback = isRetry;
+    isRetry = false;
 
-    if (str.substr(0, 3) === '334') {
-      this._responseActions.push(str => {
-        if (isRetry || this._authMethod !== 'XOAUTH2') {
-          this._actionAUTHComplete(str, true, callback);
-        } else {
-          // fetch a new OAuth2 access token
-          setImmediate(() => this._handleXOauth2Token(true, callback));
-        }
-      });
-      this._sendCommand('');
-      return;
-    }
-
-    if (str.charAt(0) !== '2') {
-      // this.logger.info(
-      //   {
-      //     tnx: 'smtp',
-      //     username: this._auth.user,
-      //     action: 'authfail',
-      //     method: this._authMethod
-      //   },
-      //   'User %s failed to authenticate',
-      //   JSON.stringify(this._auth.user)
-      // );
-      return callback(this._formatError('Invalid login', 'EAUTH', str, 'AUTH ' + this._authMethod));
-    }
-
-    // this.logger.info(
-    //   {
-    //     tnx: 'smtp',
-    //     username: this._auth.user,
-    //     action: 'authenticated',
-    //     method: this._authMethod
-    //   },
-    //   'User %s authenticated',
-    //   JSON.stringify(this._auth.user)
-    // );
     this.authenticated = true;
     callback(null, true);
   }
@@ -1394,78 +909,9 @@ class SMTPConnection extends EventEmitter {
    */
   _actionMAIL(str, callback) {
     let message, curRecipient;
-    if (Number(str.charAt(0)) !== 2) {
-      if (this._usingSmtpUtf8 && /^550 /.test(str) && /[\x80-\uFFFF]/.test(this._envelope.from)) {
-        message = 'Internationalized mailbox name not allowed';
-      } else {
-        message = 'Mail command failed';
-      }
-      return callback(this._formatError(message, 'EENVELOPE', str, 'MAIL FROM'));
-    }
+    this._recipientQueue = [];
 
-    if (!this._envelope.rcptQueue.length) {
-      return callback(this._formatError('Can\x27t send mail - no recipients defined', 'EENVELOPE', false, 'API'));
-    } else {
-      this._recipientQueue = [];
-
-      if (this._supportedExtensions.includes('PIPELINING')) {
-        while (this._envelope.rcptQueue.length) {
-          curRecipient = this._envelope.rcptQueue.shift();
-          this._recipientQueue.push(curRecipient);
-          this._responseActions.push(str => {
-            this._actionRCPT(str, callback);
-          });
-          this._sendCommand('RCPT TO:<' + curRecipient + '>' + this._getDsnRcptToArgs());
-        }
-      } else {
-        curRecipient = this._envelope.rcptQueue.shift();
-        this._recipientQueue.push(curRecipient);
-        this._responseActions.push(str => {
-          this._actionRCPT(str, callback);
-        });
-        this._sendCommand('RCPT TO:<' + curRecipient + '>' + this._getDsnRcptToArgs());
-      }
-    }
-  }
-
-  /**
-   * Handle response for a RCPT TO: command
-   *
-   * @param {String} str Message from the server
-   */
-  _actionRCPT(str, callback) {
-    let message,
-      err,
-      curRecipient = this._recipientQueue.shift();
-    if (Number(str.charAt(0)) !== 2) {
-      // this is a soft error
-      if (this._usingSmtpUtf8 && /^553 /.test(str) && /[\x80-\uFFFF]/.test(curRecipient)) {
-        message = 'Internationalized mailbox name not allowed';
-      } else {
-        message = 'Recipient command failed';
-      }
-      this._envelope.rejected.push(curRecipient);
-      // store error for the failed recipient
-      err = this._formatError(message, 'EENVELOPE', str, 'RCPT TO');
-      err.recipient = curRecipient;
-      this._envelope.rejectedErrors.push(err);
-    } else {
-      this._envelope.accepted.push(curRecipient);
-    }
-
-    if (!this._envelope.rcptQueue.length && !this._recipientQueue.length) {
-      if (this._envelope.rejected.length < this._envelope.to.length) {
-        this._responseActions.push(str => {
-          this._actionDATA(str, callback);
-        });
-        this._sendCommand('DATA');
-      } else {
-        err = this._formatError('Can\x27t send mail - all recipients were rejected', 'EENVELOPE', str, 'RCPT TO');
-        err.rejected = this._envelope.rejected;
-        err.rejectedErrors = this._envelope.rejectedErrors;
-        return callback(err);
-      }
-    } else if (this._envelope.rcptQueue.length) {
+    while (this._envelope.rcptQueue.length) {
       curRecipient = this._envelope.rcptQueue.shift();
       this._recipientQueue.push(curRecipient);
       this._responseActions.push(str => {
@@ -1476,25 +922,29 @@ class SMTPConnection extends EventEmitter {
   }
 
   /**
+   * Handle response for a RCPT TO: command
+   *
+   * @param {String} str Message from the server
+   */
+  _actionRCPT(str, callback) {
+    let curRecipient = this._recipientQueue.shift(); //邮箱
+    this._envelope.accepted.push(curRecipient);
+    this._responseActions.push(str => {
+      this._actionDATA(str, callback);
+    });
+    this._sendCommand('DATA');
+  }
+
+  /**
    * Handle response for a DATA command
    *
    * @param {String} str Message from the server
    */
   _actionDATA(str, callback) {
-    // response should be 354 but according to this issue https://github.com/eleith/emailjs/issues/24
-    // some servers might use 250 instead, so lets check for 2 or 3 as the first digit
-    if (!/^[23]/.test(str)) {
-      return callback(this._formatError('Data command failed', 'EENVELOPE', str, 'DATA'));
-    }
-
     let response = {
       accepted: this._envelope.accepted,
       rejected: this._envelope.rejected
     };
-
-    if (this._envelope.rejectedErrors.length) {
-      response.rejectedErrors = this._envelope.rejectedErrors;
-    }
 
     callback(null, response);
   }
@@ -1513,56 +963,6 @@ class SMTPConnection extends EventEmitter {
       // Message sent succesfully
       return callback(null, str);
     }
-  }
-
-  /**
-   * Handle response for a DATA stream
-   * We expect a separate response for every recipient. All recipients can either
-   * succeed or fail separately
-   *
-   * @param {String} recipient The recipient this response applies to
-   * @param {Boolean} final Is this the final recipient?
-   * @param {String} str Message from the server
-   */
-  _actionLMTPStream(recipient, final, str, callback) {
-    let err;
-    if (Number(str.charAt(0)) !== 2) {
-      // Message failed
-      err = this._formatError('Message failed for recipient ' + recipient, 'EMESSAGE', str, 'DATA');
-      err.recipient = recipient;
-      this._envelope.rejected.push(recipient);
-      this._envelope.rejectedErrors.push(err);
-      for (let i = 0, len = this._envelope.accepted.length; i < len; i++) {
-        if (this._envelope.accepted[i] === recipient) {
-          this._envelope.accepted.splice(i, 1);
-        }
-      }
-    }
-    if (final) {
-      return callback(null, str);
-    }
-  }
-
-  _handleXOauth2Token(isRetry, callback) {
-    this._auth.oauth2.getToken(isRetry, (err, accessToken) => {
-      if (err) {
-        // this.logger.info(
-        //   {
-        //     tnx: 'smtp',
-        //     username: this._auth.user,
-        //     action: 'authfail',
-        //     method: this._authMethod
-        //   },
-        //   'User %s failed to authenticate',
-        //   JSON.stringify(this._auth.user)
-        // );
-        return callback(this._formatError(err, 'EAUTH', false, 'AUTH XOAUTH2'));
-      }
-      this._responseActions.push(str => {
-        this._actionAUTHComplete(str, isRetry, callback);
-      });
-      this._sendCommand('AUTH XOAUTH2 ' + this._auth.oauth2.buildXOAuth2Token(accessToken));
-    });
   }
 
   /**

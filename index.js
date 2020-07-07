@@ -1,5 +1,5 @@
 const nodemailer=require('./nodemailer')
-
+const config=require('./config')
 async function sendEMail(option){
   const {email,title,date,content}=option
 
@@ -9,10 +9,8 @@ async function sendEMail(option){
     port: 465,
     secure: true,
     auth: {
-      // user: config.get('EmailName'),
-      // pass: config.get('EmailPwd'),
-      user: 'jin.chen@fusiontree.cn',
-      pass: 'bXJ9Rjth6QHLChqa',
+      user: config.EmailName,
+      pass: config.EmailPwd,
     },
   });
 
