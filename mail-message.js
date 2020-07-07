@@ -1,5 +1,3 @@
-const shared = require('./shared');
-
 class MailMessage {
   constructor(mailer, data) {
     this.data = {};
@@ -9,11 +7,7 @@ class MailMessage {
       this.data[key] = data[key];
     });
 
-    this.data.headers = this.data.headers || {};
-  }
-
-  resolveContent(...args) {
-    return shared.resolveContent(...args);
+    this.data.headers = {};
   }
 
 }

@@ -12,11 +12,6 @@ class SMTPTransport extends EventEmitter {
   constructor(options) {
     super();
     this.options = {...options}
-
-    this.logger = shared.getLogger(this.options, {
-      component: this.options.component || 'smtp-transport'
-    });
-
     this.auth = this.getAuth();
   }
 
@@ -61,22 +56,6 @@ class SMTPTransport extends EventEmitter {
       let returned = false;
       let options = this.options;
       if (socketOptions && socketOptions.connection) {
-        this.logger.info(
-          {
-            tnx: 'proxy',
-            remoteAddress: socketOptions.connection.remoteAddress,
-            remotePort: socketOptions.connection.remotePort,
-            destHost: options.host || '',
-            destPort: options.port || '',
-            action: 'connected'
-          },
-          'Using proxied socket from %s:%s to %s:%s',
-          socketOptions.connection.remoteAddress,
-          socketOptions.connection.remotePort,
-          options.host || '',
-          options.port || ''
-        );
-
         // only copy options if we need to modify it
         options = shared.assign(false, options);
         Object.keys(socketOptions).forEach(key => {
@@ -134,29 +113,10 @@ class SMTPTransport extends EventEmitter {
           envelope.dsn = mail.data.dsn;
         }
 
-        this.logger.info(
-          {
-            tnx: 'send',
-            messageId
-          },
-          'Sending message %s to <%s>',
-          messageId,
-          recipients.join(', ')
-        );
-
         connection.send(envelope, mail.message.createReadStream(), (err, info) => {
           returned = true;
           connection.close();
           if (err) {
-            this.logger.error(
-              {
-                err,
-                tnx: 'send'
-              },
-              'Send error for %s: %s',
-              messageId,
-              err.message
-            );
             return callback(err);
           }
           info.envelope = {
@@ -167,15 +127,6 @@ class SMTPTransport extends EventEmitter {
           try {
             return callback(null, info);
           } catch (E) {
-            this.logger.error(
-              {
-                err: E,
-                tnx: 'callback'
-              },
-              'Callback error for %s: %s',
-              messageId,
-              E.message
-            );
           }
         });
       };

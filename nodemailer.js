@@ -1,10 +1,8 @@
 const EventEmitter = require('events');
 const shared = require('./shared');
-const mimeTypes = require('./mime-types');
 const MailComposer = require('./mail-composer');
 const SMTPTransport = require('./smtp-transport');
 const MailMessage = require('./mail-message');
-const crypto = require('crypto');
 
 /**
  * Creates an object for exposing the Mail API
@@ -20,7 +18,7 @@ class Mailer extends EventEmitter {
     this.options = options
 
     this._defaultPlugins = {
-      compile: [(...args) => this._convertDataImages(...args)],
+      compile: [],
       stream: []
     };
 
@@ -29,7 +27,6 @@ class Mailer extends EventEmitter {
       stream: []
     };
 
-    this.meta = new Map();
     this.transporter = transporter;
     this.transporter.mailer = this;
   }
@@ -64,21 +61,8 @@ class Mailer extends EventEmitter {
   }
 
   _processPlugins(step, mail, callback) {
-    // step = (step || '').toString();
-    // step = (step || '').toString();
-
-    // if (!this._userPlugins.hasOwnProperty(step)) {
-    //   return callback();
-    // }
-
-    // let userPlugins = this._userPlugins[step] || [];
     let userPlugins = this._userPlugins[step]
-    // let defaultPlugins = this._defaultPlugins[step] || [];
     let defaultPlugins = this._defaultPlugins[step]
-
-    // if (userPlugins.length + defaultPlugins.length === 0) {
-    //   return callback();
-    // }
 
     let pos = 0;
     let block = 'default';
@@ -104,36 +88,6 @@ class Mailer extends EventEmitter {
     };
 
     processPlugins();
-  }
-
-
-  _convertDataImages(mail, callback) {
-    // if ( !mail.data.html) {
-    //   return callback();
-    // }
-    mail.resolveContent(mail.data, 'html', (err, html) => {
-      if (err) {
-        return callback(err);
-      }
-      let cidCounter = 0;
-      html = (html || '').toString().replace(/(<img\b[^>]* src\s*=[\s"']*)(data:([^;]+);[^"'>\s]+)/gi, (match, prefix, dataUri, mimeType) => {
-        let cid = crypto.randomBytes(10).toString('hex') + '@localhost';
-        if (!mail.data.attachments) {
-          mail.data.attachments = [];
-        }
-        if (!Array.isArray(mail.data.attachments)) {
-          mail.data.attachments = [].concat(mail.data.attachments || []);
-        }
-        mail.data.attachments.push({
-          path: dataUri,
-          cid,
-          filename: 'image-' + ++cidCounter + '.' + mimeTypes.detectExtension(mimeType)
-        });
-        return prefix + 'cid:' + cid;
-      });
-      mail.data.html = html;
-      callback();
-    });
   }
 }
 

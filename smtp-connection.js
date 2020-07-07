@@ -1,6 +1,3 @@
-'use strict';
-
-// const packageInfo = require('../../package.json');
 const EventEmitter = require('events').EventEmitter;
 const net = require('net');
 const tls = require('tls');
@@ -65,11 +62,6 @@ class SMTPConnection extends EventEmitter {
     }
 
     this.name = this.options.name || this._getHostname();
-
-    this.logger = shared.getLogger(this.options, {
-      component: this.options.component || 'smtp-connection',
-      sid: this.id
-    });
 
     this.customAuth = new Map();
     Object.keys(this.options.customAuth || {}).forEach(key => {
@@ -206,12 +198,6 @@ class SMTPConnection extends EventEmitter {
   connect(connectCallback) {
     if (typeof connectCallback === 'function') {
       this.once('connect', () => {
-        this.logger.debug(
-          {
-            tnx: 'smtp'
-          },
-          'SMTP handshake finished'
-        );
         connectCallback();
       });
 
@@ -262,18 +248,18 @@ class SMTPConnection extends EventEmitter {
         if (err) {
           return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
         }
-        this.logger.debug(
-          {
-            tnx: 'dns',
-            source: opts.host,
-            resolved: resolved.host,
-            cached: !!resolved._cached
-          },
-          'Resolved %s as %s [cache %s]',
-          opts.host,
-          resolved.host,
-          resolved._cached ? 'hit' : 'miss'
-        );
+        // this.logger.debug(
+        //   {
+        //     tnx: 'dns',
+        //     source: opts.host,
+        //     resolved: resolved.host,
+        //     cached: !!resolved._cached
+        //   },
+        //   'Resolved %s as %s [cache %s]',
+        //   opts.host,
+        //   resolved.host,
+        //   resolved._cached ? 'hit' : 'miss'
+        // );
         Object.keys(resolved).forEach(key => {
           if (key.charAt(0) !== '_' && resolved[key]) {
             opts[key] = resolved[key];
@@ -300,18 +286,7 @@ class SMTPConnection extends EventEmitter {
         if (err) {
           return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
         }
-        this.logger.debug(
-          {
-            tnx: 'dns',
-            source: opts.host,
-            resolved: resolved.host,
-            cached: !!resolved._cached
-          },
-          'Resolved %s as %s [cache %s]',
-          opts.host,
-          resolved.host,
-          resolved._cached ? 'hit' : 'miss'
-        );
+
         Object.keys(resolved).forEach(key => {
           if (key.charAt(0) !== '_' && resolved[key]) {
             opts[key] = resolved[key];
@@ -333,18 +308,7 @@ class SMTPConnection extends EventEmitter {
         if (err) {
           return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
         }
-        this.logger.debug(
-          {
-            tnx: 'dns',
-            source: opts.host,
-            resolved: resolved.host,
-            cached: !!resolved._cached
-          },
-          'Resolved %s as %s [cache %s]',
-          opts.host,
-          resolved.host,
-          resolved._cached ? 'hit' : 'miss'
-        );
+
         Object.keys(resolved).forEach(key => {
           if (key.charAt(0) !== '_' && resolved[key]) {
             opts[key] = resolved[key];
@@ -361,14 +325,6 @@ class SMTPConnection extends EventEmitter {
         }
       });
     }
-  }
-
-  /**
-   * Sends QUIT
-   */
-  quit() {
-    this._sendCommand('QUIT');
-    this._responseActions.push(this.close);
   }
 
   /**
@@ -391,14 +347,6 @@ class SMTPConnection extends EventEmitter {
       // Close the socket immediately when connection timed out
       closeMethod = 'destroy';
     }
-
-    this.logger.debug(
-      {
-        tnx: 'smtp'
-      },
-      'Closing connection to the server using "%s"',
-      closeMethod
-    );
 
     let socket = (this._socket && this._socket.socket) || this._socket;
 
@@ -459,16 +407,6 @@ class SMTPConnection extends EventEmitter {
           return;
         }
         returned = true;
-        this.logger.info(
-          {
-            tnx: 'smtp',
-            username: this._auth.user,
-            action: 'authenticated',
-            method: this._authMethod
-          },
-          'User %s authenticated',
-          JSON.stringify(this._auth.user)
-        );
         this.authenticated = true;
         callback(null, true);
       };
@@ -639,22 +577,6 @@ class SMTPConnection extends EventEmitter {
   }
 
   /**
-   * Resets connection state
-   *
-   * @param {Function} callback Callback to return once connection is reset
-   */
-  reset(callback) {
-    this._sendCommand('RSET');
-    this._responseActions.push(str => {
-      if (str.charAt(0) !== '2') {
-        return callback(this._formatError('Could not reset session state. response=' + str, 'EPROTOCOL', str, 'RSET'));
-      }
-      this._envelope = false;
-      return callback(null, true);
-    });
-  }
-
-  /**
    * Connection listener that is run when the connection to
    * the server is opened
    *
@@ -662,21 +584,6 @@ class SMTPConnection extends EventEmitter {
    */
   _onConnect() {
     clearTimeout(this._connectionTimeout);
-
-    this.logger.info(
-      {
-        tnx: 'network',
-        localAddress: this._socket.localAddress,
-        localPort: this._socket.localPort,
-        remoteAddress: this._socket.remoteAddress,
-        remotePort: this._socket.remotePort
-      },
-      '%s established to %s:%s',
-      this.secure ? 'Secure connection' : 'Connection',
-      this._socket.remoteAddress,
-      this._socket.remotePort
-    );
-
     if (this._destroyed) {
       // Connection was established after we already had canceled it
       this.close();
@@ -769,8 +676,6 @@ class SMTPConnection extends EventEmitter {
 
     err = this._formatError(err, type, data, command);
 
-    this.logger.error(data, err.message);
-
     this.emit('error', err);
     this.close();
   }
@@ -811,13 +716,6 @@ class SMTPConnection extends EventEmitter {
    * @event
    */
   _onClose() {
-    this.logger.info(
-      {
-        tnx: 'network'
-      },
-      'Connection closed'
-    );
-
     if (this.upgrading && !this._destroyed) {
       return this._onError(new Error('Connection closed unexpectedly'), 'ETLS', false, 'CONN');
     } else if (![this._actionGreeting, this.close].includes(this._responseActions[0]) && !this._destroyed) {
@@ -922,14 +820,6 @@ class SMTPConnection extends EventEmitter {
       return;
     }
 
-    if (this.options.debug || this.options.transactionLog) {
-      this.logger.debug(
-        {
-          tnx: 'server'
-        },
-        str.replace(/\r?\n$/, '')
-      );
-    }
 
     if (!str.trim()) {
       // skip unexpected empty lines
@@ -959,15 +849,6 @@ class SMTPConnection extends EventEmitter {
 
     if (this._socket.destroyed) {
       return this.close();
-    }
-
-    if (this.options.debug || this.options.transactionLog) {
-      this.logger.debug(
-        {
-          tnx: 'client'
-        },
-        (str || '').toString().replace(/\r?\n$/, '')
-      );
     }
 
     this._socket.write(Buffer.from(str + '\r\n', 'utf-8'));
@@ -1153,32 +1034,8 @@ class SMTPConnection extends EventEmitter {
 
     if (this.options.debug) {
       logStream = new PassThrough();
-      logStream.on('readable', () => {
-        let chunk;
-        while ((chunk = logStream.read())) {
-          this.logger.debug(
-            {
-              tnx: 'message'
-            },
-            chunk.toString('binary').replace(/\r?\n$/, '')
-          );
-        }
-      });
       dataStream.pipe(logStream);
     }
-
-    dataStream.once('end', () => {
-      this.logger.info(
-        {
-          tnx: 'message',
-          inByteCount: dataStream.inByteCount,
-          outByteCount: dataStream.outByteCount
-        },
-        '<%s bytes encoded mime message (source size %s bytes)>',
-        dataStream.outByteCount,
-        dataStream.inByteCount
-      );
-    });
 
     return dataStream;
   }
@@ -1341,12 +1198,12 @@ class SMTPConnection extends EventEmitter {
   _actionSTARTTLS(str) {
     if (str.charAt(0) !== '2') {
       if (this.options.opportunisticTLS) {
-        this.logger.info(
-          {
-            tnx: 'smtp'
-          },
-          'Failed STARTTLS upgrade, continuing unencrypted'
-        );
+        // this.logger.info(
+        //   {
+        //     tnx: 'smtp'
+        //   },
+        //   'Failed STARTTLS upgrade, continuing unencrypted'
+        // );
         return this.emit('connect');
       }
       this._onError(new Error('Error upgrading connection with STARTTLS'), 'ETLS', str, 'STARTTLS');
@@ -1358,13 +1215,6 @@ class SMTPConnection extends EventEmitter {
         this._onError(new Error('Error initiating TLS - ' + (err.message || err)), 'ETLS', false, 'STARTTLS');
         return;
       }
-
-      this.logger.info(
-        {
-          tnx: 'smtp'
-        },
-        'Connection upgraded with STARTTLS'
-      );
 
       if (secured) {
         // restart session
@@ -1450,16 +1300,16 @@ class SMTPConnection extends EventEmitter {
       return callback(this._formatError('Invalid login sequence while waiting for "235"', 'EAUTH', str, 'AUTH CRAM-MD5'));
     }
 
-    this.logger.info(
-      {
-        tnx: 'smtp',
-        username: this._auth.user,
-        action: 'authenticated',
-        method: this._authMethod
-      },
-      'User %s authenticated',
-      JSON.stringify(this._auth.user)
-    );
+    // this.logger.info(
+    //   {
+    //     tnx: 'smtp',
+    //     username: this._auth.user,
+    //     action: 'authenticated',
+    //     method: this._authMethod
+    //   },
+    //   'User %s authenticated',
+    //   JSON.stringify(this._auth.user)
+    // );
     this.authenticated = true;
     callback(null, true);
   }
@@ -1510,29 +1360,29 @@ class SMTPConnection extends EventEmitter {
     }
 
     if (str.charAt(0) !== '2') {
-      this.logger.info(
-        {
-          tnx: 'smtp',
-          username: this._auth.user,
-          action: 'authfail',
-          method: this._authMethod
-        },
-        'User %s failed to authenticate',
-        JSON.stringify(this._auth.user)
-      );
+      // this.logger.info(
+      //   {
+      //     tnx: 'smtp',
+      //     username: this._auth.user,
+      //     action: 'authfail',
+      //     method: this._authMethod
+      //   },
+      //   'User %s failed to authenticate',
+      //   JSON.stringify(this._auth.user)
+      // );
       return callback(this._formatError('Invalid login', 'EAUTH', str, 'AUTH ' + this._authMethod));
     }
 
-    this.logger.info(
-      {
-        tnx: 'smtp',
-        username: this._auth.user,
-        action: 'authenticated',
-        method: this._authMethod
-      },
-      'User %s authenticated',
-      JSON.stringify(this._auth.user)
-    );
+    // this.logger.info(
+    //   {
+    //     tnx: 'smtp',
+    //     username: this._auth.user,
+    //     action: 'authenticated',
+    //     method: this._authMethod
+    //   },
+    //   'User %s authenticated',
+    //   JSON.stringify(this._auth.user)
+    // );
     this.authenticated = true;
     callback(null, true);
   }
@@ -1696,16 +1546,16 @@ class SMTPConnection extends EventEmitter {
   _handleXOauth2Token(isRetry, callback) {
     this._auth.oauth2.getToken(isRetry, (err, accessToken) => {
       if (err) {
-        this.logger.info(
-          {
-            tnx: 'smtp',
-            username: this._auth.user,
-            action: 'authfail',
-            method: this._authMethod
-          },
-          'User %s failed to authenticate',
-          JSON.stringify(this._auth.user)
-        );
+        // this.logger.info(
+        //   {
+        //     tnx: 'smtp',
+        //     username: this._auth.user,
+        //     action: 'authfail',
+        //     method: this._authMethod
+        //   },
+        //   'User %s failed to authenticate',
+        //   JSON.stringify(this._auth.user)
+        // );
         return callback(this._formatError(err, 'EAUTH', false, 'AUTH XOAUTH2'));
       }
       this._responseActions.push(str => {

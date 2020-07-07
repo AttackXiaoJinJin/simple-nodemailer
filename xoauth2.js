@@ -3,7 +3,6 @@
 const Stream = require('stream').Stream;
 const fetch = require('./fetch');
 const crypto = require('crypto');
-const shared = require('./shared');
 
 /**
  * XOAUTH2 access_token generator for Gmail.
@@ -49,15 +48,6 @@ class XOAuth2 extends Stream {
       this.options.serviceRequestTimeout = serviceRequestTimeout || 5 * 60;
     }
 
-    this.logger = shared.getLogger(
-      {
-        logger
-      },
-      {
-        component: this.options.component || 'OAuth2'
-      }
-    );
-
     this.provisionCallback = typeof this.options.provisionCallback === 'function' ? this.options.provisionCallback : false;
 
     this.options.accessUrl = this.options.accessUrl || 'https://accounts.google.com/o/oauth2/token';
@@ -86,28 +76,6 @@ class XOAuth2 extends Stream {
     }
 
     let generateCallback = (...args) => {
-      if (args[0]) {
-        this.logger.error(
-          {
-            err: args[0],
-            tnx: 'OAUTH2',
-            user: this.options.user,
-            action: 'renew'
-          },
-          'Failed generating new Access Token for %s',
-          this.options.user
-        );
-      } else {
-        this.logger.info(
-          {
-            tnx: 'OAUTH2',
-            user: this.options.user,
-            action: 'renew'
-          },
-          'Generated new Access Token for %s',
-          this.options.user
-        );
-      }
       callback(...args);
     };
 
@@ -205,16 +173,6 @@ class XOAuth2 extends Stream {
       loggedUrlOptions[key] = this.options.customParams[key];
     });
 
-    this.logger.debug(
-      {
-        tnx: 'OAUTH2',
-        user: this.options.user,
-        action: 'generate'
-      },
-      'Requesting token using: %s',
-      JSON.stringify(loggedUrlOptions)
-    );
-
     this.postRequest(this.options.accessUrl, urlOptions, this.options, (error, body) => {
       let data;
 
@@ -229,15 +187,6 @@ class XOAuth2 extends Stream {
       }
 
       if (!data || typeof data !== 'object') {
-        this.logger.debug(
-          {
-            tnx: 'OAUTH2',
-            user: this.options.user,
-            action: 'post'
-          },
-          'Response: %s',
-          (body || '').toString()
-        );
         return callback(new Error('Invalid authentication response'));
       }
 
@@ -249,16 +198,6 @@ class XOAuth2 extends Stream {
           logData[key] = (data[key] || '').toString().substr(0, 6) + '...';
         }
       });
-
-      this.logger.debug(
-        {
-          tnx: 'OAUTH2',
-          user: this.options.user,
-          action: 'post'
-        },
-        'Response: %s',
-        JSON.stringify(logData)
-      );
 
       if (data.error) {
         return callback(new Error(data.error));
