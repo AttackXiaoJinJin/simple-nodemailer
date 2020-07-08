@@ -1,5 +1,3 @@
-'use strict';
-
 const Transform = require('stream').Transform;
 
 /**
@@ -49,10 +47,6 @@ function wrap(str, lineLength) {
   str = (str || '').toString();
   lineLength = lineLength || 76;
 
-  if (str.length <= lineLength) {
-    return str;
-  }
-
   let pos = 0;
   let len = str.length;
   let match, code, line;
@@ -62,28 +56,13 @@ function wrap(str, lineLength) {
   // insert soft linebreaks where needed
   while (pos < len) {
     line = str.substr(pos, lineLength);
-    if ((match = line.match(/\r\n/))) {
-      line = line.substr(0, match.index + match[0].length);
-      result += line;
-      pos += line.length;
-      continue;
-    }
 
-    if (line.substr(-1) === '\n') {
-      // nothing to change here
-      result += line;
-      pos += line.length;
-      continue;
-    } else if ((match = line.substr(-lineMargin).match(/\n.*?$/))) {
-      // truncate to nearest line break
-      line = line.substr(0, line.length - (match[0].length - 1));
-      result += line;
-      pos += line.length;
-      continue;
-    } else if (line.length > lineLength - lineMargin && (match = line.substr(-lineMargin).match(/[ \t.,!?][^ \t.,!?]*$/))) {
+    if (line.length > lineLength - lineMargin && (match = line.substr(-lineMargin).match(/[ \t.,!?][^ \t.,!?]*$/))) {
       // truncate to nearest space
       line = line.substr(0, line.length - (match[0].length - 1));
-    } else if (line.match(/[=][\da-f]{0,2}$/i)) {
+    }
+    //处理乱码，即转为中文
+    else if (line.match(/[=][\da-f]{0,2}$/i)) {
       // push incomplete encoding sequences to the next line
       if ((match = line.match(/[=][\da-f]{0,1}$/i))) {
         line = line.substr(0, line.length - match[0].length);
@@ -105,17 +84,11 @@ function wrap(str, lineLength) {
     }
 
     if (pos + line.length < len && line.substr(-1) !== '\n') {
-      if (line.length === lineLength && line.match(/[=][\da-f]{2}$/i)) {
-        line = line.substr(0, line.length - 3);
-      } else if (line.length === lineLength) {
-        line = line.substr(0, line.length - 1);
-      }
       pos += line.length;
       line += '=\r\n';
     } else {
       pos += line.length;
     }
-
     result += line;
   }
 
@@ -130,6 +103,7 @@ function wrap(str, lineLength) {
  * @returns {Boolean} True if the value was found inside allowed ranges, false otherwise
  */
 function checkRanges(nr, ranges) {
+  //这边注释掉会导致：7月7日晴 ——> 7月7 == A5晴
   for (let i = ranges.length - 1; i >= 0; i--) {
     if (!ranges[i].length) {
       continue;
@@ -171,14 +145,6 @@ class Encoder extends Transform {
   _transform(chunk, encoding, done) {
     let qp;
 
-    if (encoding !== 'buffer') {
-      chunk = Buffer.from(chunk, encoding);
-    }
-
-    if (!chunk || !chunk.length) {
-      return done();
-    }
-
     this.inputBytes += chunk.length;
 
     if (this.options.lineLength) {
@@ -193,11 +159,12 @@ class Encoder extends Transform {
         this.outputBytes += qp.length;
         this.push(qp);
       }
-    } else {
-      qp = encode(chunk);
-      this.outputBytes += qp.length;
-      this.push(qp, 'ascii');
     }
+    // else {
+    //   qp = encode(chunk);
+    //   this.outputBytes += qp.length;
+    //   this.push(qp, 'ascii');
+    // }
 
     done();
   }

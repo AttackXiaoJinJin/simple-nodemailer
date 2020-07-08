@@ -1,7 +1,3 @@
-/* eslint no-control-regex:0 */
-
-'use strict';
-
 const base64 = require('./base64');
 const qp = require('./qp');
 const mimeTypes = require('./mime-types');
@@ -32,13 +28,13 @@ module.exports = {
    * @param {Number} lineLength Max line length to check for
    * @returns {Boolean} Returns true if there is at least one line longer than lineLength chars
    */
-  hasLongerLines(str, lineLength) {
-    if (str.length > 128 * 1024) {
-      // do not test strings longer than 128kB
-      return true;
-    }
-    return new RegExp('^.{' + (lineLength + 1) + ',}', 'm').test(str);
-  },
+  // hasLongerLines(str, lineLength) {
+  //   if (str.length > 128 * 1024) {
+  //     // do not test strings longer than 128kB
+  //     return true;
+  //   }
+  //   return new RegExp('^.{' + (lineLength + 1) + ',}', 'm').test(str);
+  // },
 
   /**
    * Encodes a string or an Buffer to an UTF-8 MIME Word (rfc2047)

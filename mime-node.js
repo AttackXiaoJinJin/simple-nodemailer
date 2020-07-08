@@ -467,27 +467,27 @@ class MimeNode {
 
     // pushes node content
     let sendContent = () => {
-        let createStream = () => {
-            contentStream = new (transferEncoding === 'base64' ? base64 : qp).Encoder(options);
+      let createStream = () => {
+        contentStream = new (transferEncoding === 'base64' ? base64 : qp).Encoder(options);
 
-            contentStream.pipe(outputStream, {
-              end: false
-            });
-            contentStream.once('end', finalize);
-            contentStream.once('error', err => callback(err));
+        contentStream.pipe(outputStream, {
+          end: false
+        });
+        contentStream.once('end', finalize);
+        contentStream.once('error', err => callback(err));
 
-            localStream = this._getStream(this.content);
-            localStream.pipe(contentStream);
+        localStream = this._getStream(this.content);
+        localStream.pipe(contentStream);
 
-          localStream.once('error', err => callback(err));
-        };
-          setImmediate(createStream);
+        localStream.once('error', err => callback(err));
+      };
+      setImmediate(createStream);
 
     };
 
 
-      outputStream.write(this.buildHeaders() + '\r\n\r\n');
-      setImmediate(sendContent);
+    outputStream.write(this.buildHeaders() + '\r\n\r\n');
+    setImmediate(sendContent);
   }
 
   /**
@@ -567,37 +567,11 @@ class MimeNode {
    */
   _getStream(content) {
     let contentStream;
+    // pass string or buffer content as a stream
+    contentStream = new PassThrough();
+    setImmediate(() => contentStream.end(content || ''));
+    return contentStream;
 
-    if (content._resolvedValue) {
-      // pass string or buffer content as a stream
-      contentStream = new PassThrough();
-      setImmediate(() => contentStream.end(content._resolvedValue));
-      return contentStream;
-    } else if (typeof content.pipe === 'function') {
-      // assume as stream
-      return content;
-    } else if (content && typeof content.path === 'string' && !content.href) {
-      if (this.disableFileAccess) {
-        contentStream = new PassThrough();
-        setImmediate(() => contentStream.emit('error', new Error('File access rejected for ' + content.path)));
-        return contentStream;
-      }
-      // read file
-      return fs.createReadStream(content.path);
-    } else if (content && typeof content.href === 'string') {
-      if (this.disableUrlAccess) {
-        contentStream = new PassThrough();
-        setImmediate(() => contentStream.emit('error', new Error('Url access rejected for ' + content.href)));
-        return contentStream;
-      }
-      // fetch URL
-      return fetch(content.href, {headers: content.httpHeaders});
-    } else {
-      // pass string or buffer content as a stream
-      contentStream = new PassThrough();
-      setImmediate(() => contentStream.end(content || ''));
-      return contentStream;
-    }
   }
 
   /**
@@ -677,72 +651,72 @@ class MimeNode {
    * @param {String} value Header value
    */
   _encodeHeaderValue(key, value) {
-    key = this._normalizeHeaderKey(key);
+    // key = this._normalizeHeaderKey(key);
 
-    switch (key) {
-      // Structured headers
-      case 'From':
-      case 'Sender':
-      case 'To':
-      case 'Cc':
-      case 'Bcc':
-      case 'Reply-To':
-        return this._convertAddresses(this._parseAddresses(value));
-
-      // values enclosed in <>
-      case 'Message-ID':
-      case 'In-Reply-To':
-      case 'Content-Id':
-        value = (value || '').toString().replace(/\r?\n|\r/g, ' ');
-
-        if (value.charAt(0) !== '<') {
-          value = '<' + value;
-        }
-
-        if (value.charAt(value.length - 1) !== '>') {
-          value = value + '>';
-        }
-        return value;
-
-      // space separated list of values enclosed in <>
-      case 'References':
-        value = [].concat
-          .apply(
-            [],
-            [].concat(value || '').map(elm => {
-              // eslint-disable-line prefer-spread
-              elm = (elm || '')
-                .toString()
-                .replace(/\r?\n|\r/g, ' ')
-                .trim();
-              return elm.replace(/<[^>]*>/g, str => str.replace(/\s/g, '')).split(/\s+/);
-            })
-          )
-          .map(elm => {
-            if (elm.charAt(0) !== '<') {
-              elm = '<' + elm;
-            }
-            if (elm.charAt(elm.length - 1) !== '>') {
-              elm = elm + '>';
-            }
-            return elm;
-          });
-
-        return value.join(' ').trim();
-
-      case 'Date':
-        if (Object.prototype.toString.call(value) === '[object Date]') {
-          return value.toUTCString().replace(/GMT/, '+0000');
-        }
-
-        value = (value || '').toString().replace(/\r?\n|\r/g, ' ');
-        return this._encodeWords(value);
-
-      default:
+    // switch (key) {
+    //   // Structured headers
+    //   case 'From':
+    //   case 'Sender':
+    //   case 'To':
+    //   case 'Cc':
+    //   case 'Bcc':
+    //   case 'Reply-To':
+    //     return this._convertAddresses(this._parseAddresses(value));
+    //
+    //   // values enclosed in <>
+    //   case 'Message-ID':
+    //   case 'In-Reply-To':
+    //   case 'Content-Id':
+    //     value = (value || '').toString().replace(/\r?\n|\r/g, ' ');
+    //
+    //     if (value.charAt(0) !== '<') {
+    //       value = '<' + value;
+    //     }
+    //
+    //     if (value.charAt(value.length - 1) !== '>') {
+    //       value = value + '>';
+    //     }
+    //     return value;
+    //
+    //   // space separated list of values enclosed in <>
+    //   case 'References':
+    //     value = [].concat
+    //       .apply(
+    //         [],
+    //         [].concat(value || '').map(elm => {
+    //           // eslint-disable-line prefer-spread
+    //           elm = (elm || '')
+    //             .toString()
+    //             .replace(/\r?\n|\r/g, ' ')
+    //             .trim();
+    //           return elm.replace(/<[^>]*>/g, str => str.replace(/\s/g, '')).split(/\s+/);
+    //         })
+    //       )
+    //       .map(elm => {
+    //         if (elm.charAt(0) !== '<') {
+    //           elm = '<' + elm;
+    //         }
+    //         if (elm.charAt(elm.length - 1) !== '>') {
+    //           elm = elm + '>';
+    //         }
+    //         return elm;
+    //       });
+    //
+    //     return value.join(' ').trim();
+    //
+    //   case 'Date':
+    //     if (Object.prototype.toString.call(value) === '[object Date]') {
+    //       return value.toUTCString().replace(/GMT/, '+0000');
+    //     }
+    //
+    //     value = (value || '').toString().replace(/\r?\n|\r/g, ' ');
+    //     return this._encodeWords(value);
+    //
+    //   default:
         value = (value || '').toString().replace(/\r?\n|\r/g, ' ');
         // encodeWords only encodes if needed, otherwise the original string is returned
         return this._encodeWords(value);
-    }
+    // }
   }
 
   /**
@@ -763,20 +737,22 @@ class MimeNode {
 
         if (!address.name) {
           values.push(address.address);
-        } else if (address.name) {
-          values.push(this._encodeAddressName(address.name) + ' <' + address.address + '>');
         }
+        // else if (address.name) {
+          // values.push(this._encodeAddressName(address.name) + ' <' + address.address + '>');
+        // }
 
         if (address.address) {
           if (!uniqueList.filter(a => a.address === address.address).length) {
             uniqueList.push(address);
           }
         }
-      } else if (address.group) {
-        values.push(
-          this._encodeAddressName(address.name) + ':' + (address.group.length ? this._convertAddresses(address.group, uniqueList) : '').trim() + ';'
-        );
       }
+      // else if (address.group) {
+        // values.push(
+        //   this._encodeAddressName(address.name) + ':' + (address.group.length ? this._convertAddresses(address.group, uniqueList) : '').trim() + ';'
+        // );
+      // }
     });
 
     return values.join(', ');
@@ -813,16 +789,16 @@ class MimeNode {
    * @param {String} name Name part of an address
    * @returns {String} Mime word encoded string if needed
    */
-  _encodeAddressName(name) {
-    if (!/^[\w ']*$/.test(name)) {
-      if (/^[\x20-\x7e]*$/.test(name)) {
-        return '"' + name.replace(/([\\"])/g, '\\$1') + '"';
-      } else {
-        return mimeFuncs.encodeWord(name, this._getTextEncoding(name), 52);
-      }
-    }
-    return name;
-  }
+  // _encodeAddressName(name) {
+  //   if (!/^[\w ']*$/.test(name)) {
+  //     if (/^[\x20-\x7e]*$/.test(name)) {
+  //       return '"' + name.replace(/([\\"])/g, '\\$1') + '"';
+  //     } else {
+  //       return mimeFuncs.encodeWord(name, this._getTextEncoding(name), 52);
+  //     }
+  //   }
+  //   return name;
+  // }
 
   /**
    * If needed, mime encodes the name part

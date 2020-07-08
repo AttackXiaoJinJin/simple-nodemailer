@@ -73,102 +73,16 @@ class MailComposer {
    * @returns {Object} An object of arrays (`related` and `attached`)
    */
   getAttachments(findRelated) {
-    let icalEvent, eventObject;
-    let attachments = [].concat(this.mail.attachments || []).map((attachment, i) => {
-      let data;
-      let isMessageNode = /^message\//i.test(attachment.contentType);
+    // let icalEvent, eventObject;
+    // let attachments = []
 
-      if (/^data:/i.test(attachment.path || attachment.href)) {
-        attachment = this._processDataUrl(attachment);
-      }
-
-      data = {
-        contentType: attachment.contentType || mimeFuncs.detectMimeType(attachment.filename || attachment.path || attachment.href || 'bin'),
-        contentDisposition: attachment.contentDisposition || (isMessageNode ? 'inline' : 'attachment'),
-        contentTransferEncoding: 'contentTransferEncoding' in attachment ? attachment.contentTransferEncoding : 'base64'
-      };
-
-      if (attachment.filename) {
-        data.filename = attachment.filename;
-      } else if (!isMessageNode && attachment.filename !== false) {
-        data.filename = (attachment.path || attachment.href || '').split('/').pop().split('?').shift() || 'attachment-' + (i + 1);
-        if (data.filename.indexOf('.') < 0) {
-          data.filename += '.' + mimeFuncs.detectExtension(data.contentType);
-        }
-      }
-
-      if (/^https?:\/\//i.test(attachment.path)) {
-        attachment.href = attachment.path;
-        attachment.path = undefined;
-      }
-
-      if (attachment.cid) {
-        data.cid = attachment.cid;
-      }
-
-      if (attachment.raw) {
-        data.raw = attachment.raw;
-      } else if (attachment.path) {
-        data.content = {
-          path: attachment.path
-        };
-      } else if (attachment.href) {
-        data.content = {
-          href: attachment.href,
-          httpHeaders: attachment.httpHeaders
-        };
-      } else {
-        data.content = attachment.content || '';
-      }
-
-      if (attachment.encoding) {
-        data.encoding = attachment.encoding;
-      }
-
-      if (attachment.headers) {
-        data.headers = attachment.headers;
-      }
-
-      return data;
-    });
-
-    if (this.mail.icalEvent) {
-      if (
-        typeof this.mail.icalEvent === 'object' &&
-        (this.mail.icalEvent.content || this.mail.icalEvent.path || this.mail.icalEvent.href || this.mail.icalEvent.raw)
-      ) {
-        icalEvent = this.mail.icalEvent;
-      } else {
-        icalEvent = {
-          content: this.mail.icalEvent
-        };
-      }
-
-      eventObject = {};
-      Object.keys(icalEvent).forEach(key => {
-        eventObject[key] = icalEvent[key];
-      });
-
-      eventObject.contentType = 'application/ics';
-      if (!eventObject.headers) {
-        eventObject.headers = {};
-      }
-      eventObject.filename = eventObject.filename || 'invite.ics';
-      eventObject.headers['Content-Disposition'] = 'attachment';
-      eventObject.headers['Content-Transfer-Encoding'] = 'base64';
-    }
-
-    if (!findRelated) {
       return {
-        attached: attachments.concat(eventObject || []),
+        // attached: attachments.filter(attachment => !attachment.cid).concat(eventObject || []),
+        // related: attachments.filter(attachment => !!attachment.cid)
+        attached: [],
         related: []
       };
-    } else {
-      return {
-        attached: attachments.filter(attachment => !attachment.cid).concat(eventObject || []),
-        related: attachments.filter(attachment => !!attachment.cid)
-      };
-    }
+
   }
 
   /**
@@ -463,44 +377,45 @@ class MailComposer {
         disableUrlAccess: this.mail.disableUrlAccess,
         disableFileAccess: this.mail.disableFileAccess
       });
-    } else {
-      node = parentNode.createChild(element.contentType, {
-        filename: element.filename,
-        disableUrlAccess: this.mail.disableUrlAccess,
-        disableFileAccess: this.mail.disableFileAccess,
-        normalizeHeaderKey: this.mail.normalizeHeaderKey
-      });
     }
+    // else {
+    //   node = parentNode.createChild(element.contentType, {
+    //     filename: element.filename,
+    //     disableUrlAccess: this.mail.disableUrlAccess,
+    //     disableFileAccess: this.mail.disableFileAccess,
+    //     normalizeHeaderKey: this.mail.normalizeHeaderKey
+    //   });
+    // }
 
     // add custom headers
-    if (element.headers) {
-      node.addHeader(element.headers);
-    }
+    // if (element.headers) {
+    //   node.addHeader(element.headers);
+    // }
 
-    if (element.cid) {
-      node.setHeader('Content-Id', '<' + element.cid.replace(/[<>]/g, '') + '>');
-    }
-
-    if (element.contentTransferEncoding) {
-      node.setHeader('Content-Transfer-Encoding', element.contentTransferEncoding);
-    } else if (this.mail.encoding && /^text\//i.test(element.contentType)) {
-      node.setHeader('Content-Transfer-Encoding', this.mail.encoding);
-    }
-
-    if (!/^text\//i.test(element.contentType) || element.contentDisposition) {
-      node.setHeader('Content-Disposition', element.contentDisposition || (element.cid ? 'inline' : 'attachment'));
-    }
-
-    if (typeof element.content === 'string' && !['utf8', 'usascii', 'ascii'].includes(encoding)) {
-      element.content = Buffer.from(element.content, encoding);
-    }
+    // if (element.cid) {
+    //   node.setHeader('Content-Id', '<' + element.cid.replace(/[<>]/g, '') + '>');
+    // }
+    //
+    // if (element.contentTransferEncoding) {
+    //   node.setHeader('Content-Transfer-Encoding', element.contentTransferEncoding);
+    // } else if (this.mail.encoding && /^text\//i.test(element.contentType)) {
+    //   node.setHeader('Content-Transfer-Encoding', this.mail.encoding);
+    // }
+    //
+    // if (!/^text\//i.test(element.contentType) || element.contentDisposition) {
+    //   node.setHeader('Content-Disposition', element.contentDisposition || (element.cid ? 'inline' : 'attachment'));
+    // }
+    //
+    // if (typeof element.content === 'string' && !['utf8', 'usascii', 'ascii'].includes(encoding)) {
+    //   element.content = Buffer.from(element.content, encoding);
+    // }
 
     // prefer pregenerated raw content
-    if (element.raw) {
-      node.setRaw(element.raw);
-    } else {
+    // if (element.raw) {
+    //   node.setRaw(element.raw);
+    // } else {
       node.setContent(element.content);
-    }
+    // }
 
     return node;
   }
