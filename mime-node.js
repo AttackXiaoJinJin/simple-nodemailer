@@ -287,35 +287,10 @@ class MimeNode {
    * @return {Object} current node
    */
   addHeader(key, value) {
-    // Allow setting multiple headers at once
-    if (!value && key && typeof key === 'object') {
-      // allow {key:'content-type', value: 'text/plain'}
-      if (key.key && key.value) {
-        this.addHeader(key.key, key.value);
-      } else if (Array.isArray(key)) {
-        // allow [{key:'content-type', value: 'text/plain'}]
-        key.forEach(i => {
-          this.addHeader(i.key, i.value);
-        });
-      } else {
-        // allow {'content-type': 'text/plain'}
-        Object.keys(key).forEach(i => {
-          this.addHeader(i, key[i]);
-        });
-      }
-      return this;
-    } else if (Array.isArray(value)) {
-      value.forEach(val => {
-        this.addHeader(key, val);
-      });
-      return this;
-    }
-
-    this._headers.push({
-      key: this._normalizeHeaderKey(key),
-      value
+    // allow {'content-type': 'text/plain'}
+    Object.keys(key).forEach(i => {
+      this.addHeader(i, key[i]);
     });
-
     return this;
   }
 
@@ -344,45 +319,18 @@ class MimeNode {
    */
   setContent(content) {
     this.content = content;
-    // if (typeof this.content.pipe === 'function') {
-    //   // pre-stream handler. might be triggered if a stream is set as content
-    //   // and 'error' fires before anything is done with this stream
-    //   this._contentErrorHandler = err => {
-    //     this.content.removeListener('error', this._contentErrorHandler);
-    //     this.content = err;
-    //   };
-    //   this.content.once('error', this._contentErrorHandler);
-    // } else if (typeof this.content === 'string') {
-      this._isPlainText = mimeFuncs.isPlainText(this.content);
-      // if (this._isPlainText && mimeFuncs.hasLongerLines(this.content, 76)) {
-      //   // If there are lines longer than 76 symbols/bytes do not use 7bit
-      //   this._hasLongLines = true;
-      // }
-    // }
+    this._isPlainText = mimeFuncs.isPlainText(this.content);
     return this;
   }
 
   getTransferEncoding() {
     let transferEncoding = false;
-    let contentType = (this.getHeader('Content-Type') || '').toString().toLowerCase().trim();
 
     if (this.content) {
       transferEncoding = (this.getHeader('Content-Transfer-Encoding') || '').toString().toLowerCase().trim();
       if (!transferEncoding || !['base64', 'quoted-printable'].includes(transferEncoding)) {
-        // if (/^text\//i.test(contentType)) {
-          // If there are no special symbols, no need to modify the text
-          // if (this._isPlainText && !this._hasLongLines) {
-          //   transferEncoding = '7bit';
-          // } else if (typeof this.content === 'string' || this.content instanceof Buffer) {
-            // detect preferred encoding for string value
-            transferEncoding = this._getTextEncoding(this.content) === 'Q' ? 'quoted-printable' : 'base64';
-          // } else {
-          //   we can not check content for a stream, so either use preferred encoding or fallback to QP
-          //   transferEncoding = this.transferEncoding === 'B' ? 'base64' : 'quoted-printable';
-          // }
-        // } else if (!/^(multipart|message)\//i.test(contentType)) {
-        //   transferEncoding = transferEncoding || 'base64';
-        // }
+        // detect preferred encoding for string value
+        transferEncoding = this._getTextEncoding(this.content) === 'Q' ? 'quoted-printable' : 'base64';
       }
     }
     return transferEncoding;
@@ -397,13 +345,7 @@ class MimeNode {
     let transferEncoding = this.getTransferEncoding();
     let headers = [];
 
-    if (transferEncoding) {
-      this.setHeader('Content-Transfer-Encoding', transferEncoding);
-    }
-
-    if (this.filename && !this.getHeader('Content-Disposition')) {
-      this.setHeader('Content-Disposition', 'attachment');
-    }
+    this.setHeader('Content-Transfer-Encoding', transferEncoding);
 
     // Ensure mandatory header fields
     if (this.rootNode === this) {
@@ -423,86 +365,14 @@ class MimeNode {
       let key = header.key;
       let value = header.value;
       let structured;
-      let param;
-      let options = {};
-      let formattedHeaders = ['From', 'Sender', 'To', 'Cc', 'Bcc', 'Reply-To', 'Date', 'References'];
 
-      if (value && typeof value === 'object' && !formattedHeaders.includes(key)) {
-        Object.keys(value).forEach(key => {
-          if (key !== 'value') {
-            options[key] = value[key];
-          }
-        });
-        value = (value.value || '').toString();
-        if (!value.trim()) {
-          return;
-        }
-      }
+      //只列举 'Content-Type' 的情况
+      structured = mimeFuncs.parseHeaderValue(value);
 
-      if (options.prepared) {
-        // header value is
-        if (options.foldLines) {
-          headers.push(mimeFuncs.foldLines(key + ': ' + value));
-        } else {
-          headers.push(key + ': ' + value);
-        }
-        return;
-      }
+      this._handleContentType(structured);
 
-      switch (header.key) {
-        case 'Content-Disposition':
-          structured = mimeFuncs.parseHeaderValue(value);
-          if (this.filename) {
-            structured.params.filename = this.filename;
-          }
-          value = mimeFuncs.buildHeaderValue(structured);
-          break;
-        case 'Content-Type':
-          structured = mimeFuncs.parseHeaderValue(value);
-
-          this._handleContentType(structured);
-
-          if (structured.value.match(/^text\/plain\b/) && typeof this.content === 'string' && /[\u0080-\uFFFF]/.test(this.content)) {
-            structured.params.charset = 'utf-8';
-          }
-
-          value = mimeFuncs.buildHeaderValue(structured);
-
-          if (this.filename) {
-            // add support for non-compliant clients like QQ webmail
-            // we can't build the value with buildHeaderValue as the value is non standard and
-            // would be converted to parameter continuation encoding that we do not want
-            param = this._encodeWords(this.filename);
-
-            if (param !== this.filename || /[\s'"\\;:/=(),<>@[\]?]|^-/.test(param)) {
-              // include value in quotes if needed
-              param = '"' + param + '"';
-            }
-            value += '; name=' + param;
-          }
-          break;
-        case 'Bcc':
-          if (!this.keepBcc) {
-            // skip BCC values
-            return;
-          }
-          break;
-      }
-
+      value = mimeFuncs.buildHeaderValue(structured);
       value = this._encodeHeaderValue(key, value);
-
-      // skip empty lines
-      if (!(value || '').toString().trim()) {
-        return;
-      }
-
-      if (typeof this.normalizeHeaderKey === 'function') {
-        let normalized = this.normalizeHeaderKey(key, value);
-        if (normalized && typeof normalized === 'string' && normalized.length) {
-          key = normalized;
-        }
-      }
-
       headers.push(mimeFuncs.foldLines(key + ': ' + value, 76));
     });
 
@@ -554,28 +424,6 @@ class MimeNode {
     return outputStream;
   }
 
-  /**
-   * Appends a transform stream object to the transforms list. Final output
-   * is passed through this stream before exposing
-   *
-   * @param {Object} transform Read-Write stream
-   */
-  transform(transform) {
-    this._transforms.push(transform);
-  }
-
-  /**
-   * Appends a post process function. The functon is run after transforms and
-   * uses the following syntax
-   *
-   *   processFunc(input) -> outputStream
-   *
-   * @param {Object} processFunc Read-Write stream
-   */
-  processFunc(processFunc) {
-    this._processFuncs.push(processFunc);
-  }
-
   stream(outputStream, options, done) {
     let transferEncoding = this.getTransferEncoding();
     let contentStream;
@@ -619,20 +467,7 @@ class MimeNode {
 
     // pushes node content
     let sendContent = () => {
-      if (this.content) {
-        if (Object.prototype.toString.call(this.content) === '[object Error]') {
-          // content is already errored
-          return callback(this.content);
-        }
-
-        if (typeof this.content.pipe === 'function') {
-          this.content.removeListener('error', this._contentErrorHandler);
-          this._contentErrorHandler = err => callback(err);
-          this.content.once('error', this._contentErrorHandler);
-        }
-
         let createStream = () => {
-          if (['quoted-printable', 'base64'].includes(transferEncoding)) {
             contentStream = new (transferEncoding === 'base64' ? base64 : qp).Encoder(options);
 
             contentStream.pipe(outputStream, {
@@ -643,139 +478,16 @@ class MimeNode {
 
             localStream = this._getStream(this.content);
             localStream.pipe(contentStream);
-          } else {
-            // anything that is not QP or Base54 passes as-is
-            localStream = this._getStream(this.content);
-            localStream.pipe(outputStream, {
-              end: false
-            });
-            localStream.once('end', finalize);
-          }
 
           localStream.once('error', err => callback(err));
         };
-
-        if (this.content._resolve) {
-          let chunks = [];
-          let chunklen = 0;
-          let returned = false;
-          let sourceStream = this._getStream(this.content);
-          sourceStream.on('error', err => {
-            if (returned) {
-              return;
-            }
-            returned = true;
-            callback(err);
-          });
-          sourceStream.on('readable', () => {
-            let chunk;
-            while ((chunk = sourceStream.read()) !== null) {
-              chunks.push(chunk);
-              chunklen += chunk.length;
-            }
-          });
-          sourceStream.on('end', () => {
-            if (returned) {
-              return;
-            }
-            returned = true;
-            this.content._resolve = false;
-            this.content._resolvedValue = Buffer.concat(chunks, chunklen);
-            setImmediate(createStream);
-          });
-        } else {
           setImmediate(createStream);
-        }
-        return;
-      } else {
-        return setImmediate(finalize);
-      }
+
     };
 
-    if (this._raw) {
-      setImmediate(() => {
-        if (Object.prototype.toString.call(this._raw) === '[object Error]') {
-          // content is already errored
-          return callback(this._raw);
-        }
 
-        // remove default error handler (if set)
-        if (typeof this._raw.pipe === 'function') {
-          this._raw.removeListener('error', this._contentErrorHandler);
-        }
-
-        let raw = this._getStream(this._raw);
-        raw.pipe(outputStream, {
-          end: false
-        });
-        raw.on('error', err => outputStream.emit('error', err));
-        raw.on('end', finalize);
-      });
-    } else {
       outputStream.write(this.buildHeaders() + '\r\n\r\n');
       setImmediate(sendContent);
-    }
-  }
-
-  /**
-   * Sets envelope to be used instead of the generated one
-   *
-   * @return {Object} SMTP envelope in the form of {from: 'from@example.com', to: ['to@example.com']}
-   */
-  setEnvelope(envelope) {
-    let list;
-
-    this._envelope = {
-      from: false,
-      to: []
-    };
-
-    if (envelope.from) {
-      list = [];
-      this._convertAddresses(this._parseAddresses(envelope.from), list);
-      list = list.filter(address => address && address.address);
-      if (list.length && list[0]) {
-        this._envelope.from = list[0].address;
-      }
-    }
-    ['to', 'cc', 'bcc'].forEach(key => {
-      if (envelope[key]) {
-        this._convertAddresses(this._parseAddresses(envelope[key]), this._envelope.to);
-      }
-    });
-
-    this._envelope.to = this._envelope.to.map(to => to.address).filter(address => address);
-
-    let standardFields = ['to', 'cc', 'bcc', 'from'];
-    Object.keys(envelope).forEach(key => {
-      if (!standardFields.includes(key)) {
-        this._envelope[key] = envelope[key];
-      }
-    });
-
-    return this;
-  }
-
-  /**
-   * Generates and returns an object with parsed address fields
-   *
-   * @return {Object} Address object
-   */
-  getAddresses() {
-    let addresses = {};
-
-    this._headers.forEach(header => {
-      let key = header.key.toLowerCase();
-      if (['from', 'sender', 'reply-to', 'to', 'cc', 'bcc'].includes(key)) {
-        if (!Array.isArray(addresses[key])) {
-          addresses[key] = [];
-        }
-
-        this._convertAddresses(this._parseAddresses(header.value), addresses[key]);
-      }
-    });
-
-    return addresses;
   }
 
   /**
@@ -879,7 +591,7 @@ class MimeNode {
         return contentStream;
       }
       // fetch URL
-      return fetch(content.href, { headers: content.httpHeaders });
+      return fetch(content.href, {headers: content.httpHeaders});
     } else {
       // pass string or buffer content as a stream
       contentStream = new PassThrough();

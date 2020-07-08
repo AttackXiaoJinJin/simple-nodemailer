@@ -60,11 +60,6 @@ class MailComposer {
       }
     });
 
-    // Sets custom envelope
-    if (this.mail.envelope) {
-      this.message.setEnvelope(this.mail.envelope);
-    }
-
     // ensure Message-Id value
     this.message.messageId();
 
