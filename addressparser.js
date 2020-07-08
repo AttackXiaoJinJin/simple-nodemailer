@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Converts tokens for a single address into an address object
  *
@@ -8,7 +6,6 @@
  */
 function _handleAddress(tokens) {
   let token;
-  let isGroup = false;
   let state = 'text';
   let address;
   let addresses = [];
@@ -24,110 +21,33 @@ function _handleAddress(tokens) {
   // Filter out <addresses>, (comments) and regular text
   for (i = 0, len = tokens.length; i < len; i++) {
     token = tokens[i];
-    if (token.type === 'operator') {
-      switch (token.value) {
-        case '<':
-          state = 'address';
-          break;
-        case '(':
-          state = 'comment';
-          break;
-        case ':':
-          state = 'group';
-          isGroup = true;
-          break;
-        default:
-          state = 'text';
+    data[state].push(token.value);
+  }
+
+  // If no address was found, try to detect one from regular text
+  if (!data.address.length && data.text.length) {
+    for (i = data.text.length - 1; i >= 0; i--) {
+      if (data.text[i].match(/^[^@\s]+@[^@\s]+$/)) {
+        data.address = data.text.splice(i, 1);
+        break;
       }
-    } else if (token.value) {
-      if (state === 'address') {
-        // handle use case where unquoted name includes a "<"
-        // Apple Mail truncates everything between an unexpected < and an address
-        // and so will we
-        token.value = token.value.replace(/^[^<]*<\s*/, '');
-      }
-      data[state].push(token.value);
     }
   }
 
-  // If there is no text but a comment, replace the two
-  if (!data.text.length && data.comment.length) {
-    data.text = data.comment;
-    data.comment = [];
+  // Join values with spaces
+  data.text = data.text.join(' ');
+  data.address = data.address.join(' ');
+
+  address = {
+    address: data.address || data.text || '',
+    name: data.text || data.address || ''
+  };
+
+  if (address.address === address.name) {
+    address.name = '';
   }
 
-  if (isGroup) {
-    // http://tools.ietf.org/html/rfc2822#appendix-A.1.3
-    data.text = data.text.join(' ');
-    addresses.push({
-      name: data.text || (address && address.name),
-      group: data.group.length ? addressparser(data.group.join(',')) : []
-    });
-  } else {
-    // If no address was found, try to detect one from regular text
-    if (!data.address.length && data.text.length) {
-      for (i = data.text.length - 1; i >= 0; i--) {
-        if (data.text[i].match(/^[^@\s]+@[^@\s]+$/)) {
-          data.address = data.text.splice(i, 1);
-          break;
-        }
-      }
-
-      let _regexHandler = function(address) {
-        if (!data.address.length) {
-          data.address = [address.trim()];
-          return ' ';
-        } else {
-          return address;
-        }
-      };
-
-      // still no address
-      if (!data.address.length) {
-        for (i = data.text.length - 1; i >= 0; i--) {
-          // fixed the regex to parse email address correctly when email address has more than one @
-          data.text[i] = data.text[i].replace(/\s*\b[^@\s]+@[^\s]+\b\s*/, _regexHandler).trim();
-          if (data.address.length) {
-            break;
-          }
-        }
-      }
-    }
-
-    // If there's still is no text but a comment exixts, replace the two
-    if (!data.text.length && data.comment.length) {
-      data.text = data.comment;
-      data.comment = [];
-    }
-
-    // Keep only the first address occurence, push others to regular text
-    if (data.address.length > 1) {
-      data.text = data.text.concat(data.address.splice(1));
-    }
-
-    // Join values with spaces
-    data.text = data.text.join(' ');
-    data.address = data.address.join(' ');
-
-    if (!data.address && isGroup) {
-      return [];
-    } else {
-      address = {
-        address: data.address || data.text || '',
-        name: data.text || data.address || ''
-      };
-
-      if (address.address === address.name) {
-        if ((address.address || '').match(/@/)) {
-          address.name = '';
-        } else {
-          address.address = '';
-        }
-      }
-
-      addresses.push(address);
-    }
-  }
+  addresses.push(address);
 
   return addresses;
 }
@@ -141,29 +61,9 @@ function _handleAddress(tokens) {
 class Tokenizer {
   constructor(str) {
     this.str = (str || '').toString();
-    this.operatorCurrent = '';
-    this.operatorExpecting = '';
     this.node = null;
-    this.escaped = false;
-
     this.list = [];
-    /**
-     * Operator tokens and which tokens are expected to end the sequence
-     */
-    this.operators = {
-      '"': '"',
-      '(': ')',
-      '<': '>',
-      ',': '',
-      ':': ';',
-      // Semicolons are not a legal delimiter per the RFC2822 grammar other
-      // than for terminating a group, but they are also not valid for any
-      // other use in this context.  Given that some mail clients have
-      // historically allowed the semicolon as a delimiter equivalent to the
-      // comma in their UI, it makes sense to treat them the same as a comma
-      // when used outside of a group.
-      ';': ''
-    };
+
   }
 
   /**
@@ -195,35 +95,6 @@ class Tokenizer {
    * @param {String} chr Character from the address field
    */
   checkChar(chr) {
-    if ((chr in this.operators || chr === '\\') && this.escaped) {
-      this.escaped = false;
-    } else if (this.operatorExpecting && chr === this.operatorExpecting) {
-      this.node = {
-        type: 'operator',
-        value: chr
-      };
-      this.list.push(this.node);
-      this.node = null;
-      this.operatorExpecting = '';
-      this.escaped = false;
-      return;
-    } else if (!this.operatorExpecting && chr in this.operators) {
-      this.node = {
-        type: 'operator',
-        value: chr
-      };
-      this.list.push(this.node);
-      this.node = null;
-      this.operatorExpecting = this.operators[chr];
-      this.escaped = false;
-      return;
-    }
-
-    if (!this.escaped && chr === '\\') {
-      this.escaped = true;
-      return;
-    }
-
     if (!this.node) {
       this.node = {
         type: 'text',
@@ -232,12 +103,7 @@ class Tokenizer {
       this.list.push(this.node);
     }
 
-    if (this.escaped && chr !== '\\') {
-      this.node.value += '\\';
-    }
-
     this.node.value += chr;
-    this.escaped = false;
   }
 }
 
@@ -256,8 +122,6 @@ class Tokenizer {
  * @return {Array} An array of address objects
  */
 function addressparser(str, options) {
-  options = options || {};
-
   let tokenizer = new Tokenizer(str);
   let tokens = tokenizer.tokenize();
 
@@ -266,14 +130,7 @@ function addressparser(str, options) {
   let parsedAddresses = [];
 
   tokens.forEach(token => {
-    if (token.type === 'operator' && (token.value === ',' || token.value === ';')) {
-      if (address.length) {
-        addresses.push(address);
-      }
-      address = [];
-    } else {
       address.push(token);
-    }
   });
 
   if (address.length) {
@@ -286,21 +143,6 @@ function addressparser(str, options) {
       parsedAddresses = parsedAddresses.concat(address);
     }
   });
-
-  if (options.flatten) {
-    let addresses = [];
-    let walkAddressList = list => {
-      list.forEach(address => {
-        if (address.group) {
-          return walkAddressList(address.group);
-        } else {
-          addresses.push(address);
-        }
-      });
-    };
-    walkAddressList(parsedAddresses);
-    return addresses;
-  }
 
   return parsedAddresses;
 }

@@ -63,18 +63,6 @@ class SMTPConnection extends EventEmitter {
 
     this.name = this.options.name || this._getHostname();
 
-    // this.customAuth = new Map();
-    // Object.keys(this.options.customAuth || {}).forEach(key => {
-    //   let mapKey = (key || '')
-    //     .toString()
-    //     .trim()
-    //     .toUpperCase();
-    //   if (!mapKey) {
-    //     return;
-    //   }
-    //   this.customAuth.set(mapKey, this.options.customAuth[key]);
-    // });
-
     /**
      * Expose version nr, just for the reference
      * @type {String}
@@ -201,20 +189,12 @@ class SMTPConnection extends EventEmitter {
         connectCallback();
       });
 
-      const isDestroyedMessage = this._isDestroyedMessage('connect');
-      if (isDestroyedMessage) {
-        return connectCallback(this._formatError(isDestroyedMessage, 'ECONNECTION', false, 'CONN'));
-      }
     }
 
     let opts = {
       port: this.port,
       host: this.host
     };
-
-    if (this.options.localAddress) {
-      opts.localAddress = this.options.localAddress;
-    }
 
     let setupConnectionHandlers = () => {
       this._connectionTimeout = setTimeout(() => {
@@ -224,12 +204,6 @@ class SMTPConnection extends EventEmitter {
       this._socket.on('error', this._onSocketError);
     };
 
-    // connect using tls
-    if (this.options.tls) {
-      Object.keys(this.options.tls).forEach(key => {
-        opts[key] = this.options.tls[key];
-      });
-    }
     return shared.resolveHostname(opts, (err, resolved) => {
       if (err) {
         return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
@@ -260,20 +234,9 @@ class SMTPConnection extends EventEmitter {
     clearTimeout(this._connectionTimeout);
     clearTimeout(this._greetingTimeout);
     this._responseActions = [];
-
-    // allow to run this function only once
-    if (this._closing) {
-      return;
-    }
     this._closing = true;
 
     let closeMethod = 'end';
-
-    if (this.stage === 'init') {
-      // Close the socket immediately when connection timed out
-      closeMethod = 'destroy';
-    }
-
     let socket = (this._socket && this._socket.socket) || this._socket;
 
     if (socket && !socket.destroyed) {
@@ -291,15 +254,8 @@ class SMTPConnection extends EventEmitter {
    * Authenticate user
    */
   login(authData, callback) {
-    const isDestroyedMessage = this._isDestroyedMessage('login');
-    if (isDestroyedMessage) {
-      return callback(this._formatError(isDestroyedMessage, 'ECONNECTION', false, 'API'));
-    }
-
     this._auth = authData || {};
     // Select SASL authentication method
-
-    this._authMethod = (this._supportedAuth[0]).toUpperCase().trim();
 
     this._responseActions.push(str => {
       this._actionAUTHComplete(str, callback);
@@ -326,22 +282,6 @@ class SMTPConnection extends EventEmitter {
    * @param {Function} callback Callback to return once sending is completed
    */
   send(envelope, message, done) {
-    if (!message) {
-      return done(this._formatError('Empty message', 'EMESSAGE', false, 'API'));
-    }
-
-    const isDestroyedMessage = this._isDestroyedMessage('send message');
-    if (isDestroyedMessage) {
-      return done(this._formatError(isDestroyedMessage, 'ECONNECTION', false, 'API'));
-    }
-
-    // reject larger messages than allowed
-    if (this._maxAllowedSize && envelope.size > this._maxAllowedSize) {
-      return setImmediate(() => {
-        done(this._formatError('Message size larger than allowed ' + this._maxAllowedSize, 'EMESSAGE', false, 'MAIL FROM'));
-      });
-    }
-
     // ensure that callback is only called once
     let returned = false;
     let callback = function () {
@@ -375,12 +315,7 @@ class SMTPConnection extends EventEmitter {
 
         return callback(null, info);
       });
-      if (typeof message.pipe === 'function') {
         message.pipe(stream);
-      } else {
-        stream.write(message);
-        stream.end();
-      }
     });
   }
 
@@ -487,35 +422,36 @@ class SMTPConnection extends EventEmitter {
     this.emit('error', err);
     this.close();
   }
-
+  //不看
   _formatError(message, type, response, command) {
-    let err;
+    // let err;
+    //
+    // if (/Error\]$/i.test(Object.prototype.toString.call(message))) {
+    //   err = message;
+    // } else {
+    //   err = new Error(message);
+    // }
+    //
+    // if (type && type !== 'Error') {
+    //   err.code = type;
+    // }
+    //
+    // if (response) {
+    //   err.response = response;
+    //   err.message += ': ' + response;
+    // }
+    //
+    // let responseCode = (typeof response === 'string' && Number((response.match(/^\d+/) || [])[0])) || false;
+    // if (responseCode) {
+    //   err.responseCode = responseCode;
+    // }
+    //
+    // if (command) {
+    //   err.command = command;
+    // }
 
-    if (/Error\]$/i.test(Object.prototype.toString.call(message))) {
-      err = message;
-    } else {
-      err = new Error(message);
-    }
-
-    if (type && type !== 'Error') {
-      err.code = type;
-    }
-
-    if (response) {
-      err.response = response;
-      err.message += ': ' + response;
-    }
-
-    let responseCode = (typeof response === 'string' && Number((response.match(/^\d+/) || [])[0])) || false;
-    if (responseCode) {
-      err.responseCode = responseCode;
-    }
-
-    if (command) {
-      err.command = command;
-    }
-
-    return err;
+    // return err;
+    return 'error454'
   }
 
   /**
@@ -524,12 +460,6 @@ class SMTPConnection extends EventEmitter {
    * @event
    */
   _onClose() {
-    if (this.upgrading && !this._destroyed) {
-      return this._onError(new Error('Connection closed unexpectedly'), 'ETLS', false, 'CONN');
-    } else if (![this._actionGreeting, this.close].includes(this._responseActions[0]) && !this._destroyed) {
-      return this._onError(new Error('Connection closed unexpectedly'), 'ECONNECTION', false, 'CONN');
-    }
-
     this._destroy();
   }
 
@@ -562,53 +492,6 @@ class SMTPConnection extends EventEmitter {
     }
     this._destroyed = true;
     this.emit('end');
-  }
-
-  /**
-   * Upgrades the connection to TLS
-   *
-   * @param {Function} callback Callback function to run when the connection
-   *        has been secured
-   */
-  _upgradeConnection(callback) {
-    // do not remove all listeners or it breaks node v0.10 as there's
-    // apparently a 'finish' event set that would be cleared as well
-
-    // we can safely keep 'error', 'end', 'close' etc. events
-    this._socket.removeListener('data', this._onSocketData); // incoming data is going to be gibberish from this point onwards
-    this._socket.removeListener('timeout', this._onSocketTimeout); // timeout will be re-set for the new socket object
-
-    let socketPlain = this._socket;
-    let opts = {
-      socket: this._socket,
-      host: this.host
-    };
-
-    Object.keys(this.options.tls || {}).forEach(key => {
-      opts[key] = this.options.tls[key];
-    });
-
-    this.upgrading = true;
-    this._socket = tls.connect(opts, () => {
-      this.secure = true;
-      this.upgrading = false;
-      this._socket.on('data', this._onSocketData);
-
-      socketPlain.removeListener('close', this._onSocketClose);
-      socketPlain.removeListener('end', this._onSocketEnd);
-
-      return callback(null, true);
-    });
-
-    this._socket.on('error', this._onSocketError);
-    this._socket.once('close', this._onSocketClose);
-    this._socket.once('end', this._onSocketEnd);
-
-    this._socket.setTimeout(this.options.socketTimeout || SOCKET_TIMEOUT); // 10 min.
-    this._socket.on('timeout', this._onSocketTimeout);
-
-    // resume in case the socket was paused
-    socketPlain.resume();
   }
 
   /**
@@ -662,9 +545,6 @@ class SMTPConnection extends EventEmitter {
 
     this._envelope = envelope
 
-
-
-
     // clone the recipients array for latter manipulation
     // this._envelope.rcptQueue = JSON.parse(JSON.stringify(this._envelope.to || []));
     this._envelope.rcptQueue = JSON.parse(JSON.stringify(this._envelope.to));
@@ -681,16 +561,6 @@ class SMTPConnection extends EventEmitter {
 
   _getDsnRcptToArgs() {
     let args = [];
-    // If the server supports DSN and the envelope includes an DSN prop
-    // then append DSN params to the RCPT TO command
-    if (this._envelope.dsn && this._supportedExtensions.includes('DSN')) {
-      if (this._envelope.dsn.notify) {
-        args.push('NOTIFY=' + shared.encodeXText(this._envelope.dsn.notify));
-      }
-      if (this._envelope.dsn.orcpt) {
-        args.push('ORCPT=' + shared.encodeXText(this._envelope.dsn.orcpt));
-      }
-    }
     return args.length ? ' ' + args.join(' ') : '';
   }
 
@@ -731,21 +601,6 @@ class SMTPConnection extends EventEmitter {
   }
 
   /**
-   * Handles server response for LHLO command. If it yielded in
-   * error, emit 'error', otherwise treat this as an EHLO response
-   *
-   * @param {String} str Message from the server
-   */
-  _actionLHLO(str) {
-    if (str.charAt(0) !== '2') {
-      this._onError(new Error('Invalid LHLO. response=' + str), 'EPROTOCOL', str, 'LHLO');
-      return;
-    }
-
-    this._actionEHLO(str);
-  }
-
-  /**
    * Handles server response for EHLO command. If it yielded in
    * error, try HELO instead, otherwise initiate TLS negotiation
    * if STARTTLS is supported by the server or move into the
@@ -755,40 +610,6 @@ class SMTPConnection extends EventEmitter {
    */
   _actionEHLO(str) {
     let match;
-
-    if (str.substr(0, 3) === '421') {
-      this._onError(new Error('Server terminates connection. response=' + str), 'ECONNECTION', str, 'EHLO');
-      return;
-    }
-
-    if (str.charAt(0) !== '2') {
-      if (this.options.requireTLS) {
-        this._onError(new Error('EHLO failed but HELO does not support required STARTTLS. response=' + str), 'ECONNECTION', str, 'EHLO');
-        return;
-      }
-
-      // Try HELO instead
-      this._responseActions.push(this._actionHELO);
-      this._sendCommand('HELO ' + this.name);
-      return;
-    }
-
-    // Detect if the server supports STARTTLS
-    if (!this.secure && !this.options.ignoreTLS && (/[ -]STARTTLS\b/im.test(str) || this.options.requireTLS)) {
-      this._sendCommand('STARTTLS');
-      this._responseActions.push(this._actionSTARTTLS);
-      return;
-    }
-
-    // Detect if the server supports SMTPUTF8
-    if (/[ -]SMTPUTF8\b/im.test(str)) {
-      this._supportedExtensions.push('SMTPUTF8');
-    }
-
-    // Detect if the server supports DSN
-    if (/[ -]DSN\b/im.test(str)) {
-      this._supportedExtensions.push('DSN');
-    }
 
     // Detect if the server supports 8BITMIME
     if (/[ -]8BITMIME\b/im.test(str)) {
@@ -815,16 +636,6 @@ class SMTPConnection extends EventEmitter {
       this._supportedAuth.push('LOGIN');
     }
 
-    // Detect if the server supports CRAM-MD5 auth
-    if (/[ -]AUTH(?:(\s+|=)[^\n]*\s+|\s+|=)CRAM-MD5/i.test(str)) {
-      this._supportedAuth.push('CRAM-MD5');
-    }
-
-    // Detect if the server supports XOAUTH2 auth
-    if (/[ -]AUTH(?:(\s+|=)[^\n]*\s+|\s+|=)XOAUTH2/i.test(str)) {
-      this._supportedAuth.push('XOAUTH2');
-    }
-
     // Detect if the server supports SIZE extensions (and the max allowed size)
     if ((match = str.match(/[ -]SIZE(?:[ \t]+(\d+))?/im))) {
       this._supportedExtensions.push('SIZE');
@@ -832,60 +643,6 @@ class SMTPConnection extends EventEmitter {
     }
 
     this.emit('connect');
-  }
-
-  /**
-   * Handles server response for HELO command. If it yielded in
-   * error, emit 'error', otherwise move into the authentication phase.
-   *
-   * @param {String} str Message from the server
-   */
-  _actionHELO(str) {
-    if (str.charAt(0) !== '2') {
-      this._onError(new Error('Invalid HELO. response=' + str), 'EPROTOCOL', str, 'HELO');
-      return;
-    }
-
-    // assume that authentication is enabled (most probably is not though)
-    this.allowsAuth = true;
-    this.emit('connect');
-  }
-
-  /**
-   * Handles server response for STARTTLS command. If there's an error
-   * try HELO instead, otherwise initiate TLS upgrade. If the upgrade
-   * succeedes restart the EHLO
-   *
-   * @param {String} str Message from the server
-   */
-  _actionSTARTTLS(str) {
-    if (str.charAt(0) !== '2') {
-      if (this.options.opportunisticTLS) {
-        return this.emit('connect');
-      }
-      this._onError(new Error('Error upgrading connection with STARTTLS'), 'ETLS', str, 'STARTTLS');
-      return;
-    }
-
-    this._upgradeConnection((err, secured) => {
-      if (err) {
-        this._onError(new Error('Error initiating TLS - ' + (err.message || err)), 'ETLS', false, 'STARTTLS');
-        return;
-      }
-
-      if (secured) {
-        // restart session
-        if (this.options.lmtp) {
-          this._responseActions.push(this._actionLHLO);
-          this._sendCommand('LHLO ' + this.name);
-        } else {
-          this._responseActions.push(this._actionEHLO);
-          this._sendCommand('EHLO ' + this.name);
-        }
-      } else {
-        this.emit('connect');
-      }
-    });
   }
 
   /**
@@ -956,51 +713,15 @@ class SMTPConnection extends EventEmitter {
    * @param {String} str Message from the server
    */
   _actionSMTPStream(str, callback) {
-    if (Number(str.charAt(0)) !== 2) {
-      // Message failed
-      return callback(this._formatError('Message failed', 'EMESSAGE', str, 'DATA'));
-    } else {
       // Message sent succesfully
       return callback(null, str);
-    }
-  }
-
-  /**
-   *
-   * @param {string} command
-   * @private
-   */
-  _isDestroyedMessage(command) {
-    if (this._destroyed) {
-      return 'Cannot ' + command + ' - smtp connection is already destroyed.';
-    }
-
-    if (this._socket) {
-      if (this._socket.destroyed) {
-        return 'Cannot ' + command + ' - smtp connection socket is already destroyed.';
-      }
-
-      if (!this._socket.writable) {
-        return 'Cannot ' + command + ' - smtp connection socket is already half-closed.';
-      }
-    }
   }
 
   _getHostname() {
     // defaul hostname is machine hostname or [IP]
-    let defaultHostname = os.hostname() || '';
-
-    // ignore if not FQDN
-    if (defaultHostname.indexOf('.') < 0) {
-      defaultHostname = '[127.0.0.1]';
-    }
-
-    // IP should be enclosed in []
-    if (defaultHostname.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-      defaultHostname = '[' + defaultHostname + ']';
-    }
-
-    return defaultHostname;
+    // let defaultHostname = os.hostname() || '';
+    // return defaultHostname;
+    return os.hostname()
   }
 }
 

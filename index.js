@@ -9,8 +9,8 @@ async function sendEMail(option){
     port: 465,
     secure: true,
     auth: {
-      user: config.EmailName,
-      pass: config.EmailPwd,
+      user: config.user,
+      pass: config.pass,
     },
   });
 

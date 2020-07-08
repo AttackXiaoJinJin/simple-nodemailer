@@ -1,13 +1,8 @@
-/* eslint no-undefined: 0, prefer-spread: 0, no-control-regex: 0 */
-
-'use strict';
-
 const crypto = require('crypto');
 const os = require('os');
 const fs = require('fs');
 const punycode = require('punycode');
 const PassThrough = require('stream').PassThrough;
-const shared = require('./shared');
 
 const mimeFuncs = require('./mime-funcs');
 const qp = require('./qp');
@@ -219,26 +214,6 @@ class MimeNode {
   }
 
   /**
-   * Removes current node from the mime tree
-   *
-   * @return {Object} removed node
-   */
-  remove() {
-    if (!this.parentNode) {
-      return this;
-    }
-
-    for (let i = this.parentNode.childNodes.length - 1; i >= 0; i--) {
-      if (this.parentNode.childNodes[i] === this) {
-        this.parentNode.childNodes.splice(i, 1);
-        this.parentNode = undefined;
-        this.rootNode = this;
-        return this;
-      }
-    }
-  }
-
-  /**
    * Sets a header value. If the value for selected key exists, it is overwritten.
    * You can set multiple values as well by using [{key:'', value:''}] or
    * {key: 'value'} as the first argument.
@@ -369,70 +344,22 @@ class MimeNode {
    */
   setContent(content) {
     this.content = content;
-    if (typeof this.content.pipe === 'function') {
-      // pre-stream handler. might be triggered if a stream is set as content
-      // and 'error' fires before anything is done with this stream
-      this._contentErrorHandler = err => {
-        this.content.removeListener('error', this._contentErrorHandler);
-        this.content = err;
-      };
-      this.content.once('error', this._contentErrorHandler);
-    } else if (typeof this.content === 'string') {
+    // if (typeof this.content.pipe === 'function') {
+    //   // pre-stream handler. might be triggered if a stream is set as content
+    //   // and 'error' fires before anything is done with this stream
+    //   this._contentErrorHandler = err => {
+    //     this.content.removeListener('error', this._contentErrorHandler);
+    //     this.content = err;
+    //   };
+    //   this.content.once('error', this._contentErrorHandler);
+    // } else if (typeof this.content === 'string') {
       this._isPlainText = mimeFuncs.isPlainText(this.content);
-      if (this._isPlainText && mimeFuncs.hasLongerLines(this.content, 76)) {
-        // If there are lines longer than 76 symbols/bytes do not use 7bit
-        this._hasLongLines = true;
-      }
-    }
+      // if (this._isPlainText && mimeFuncs.hasLongerLines(this.content, 76)) {
+      //   // If there are lines longer than 76 symbols/bytes do not use 7bit
+      //   this._hasLongLines = true;
+      // }
+    // }
     return this;
-  }
-
-  build(callback) {
-    let promise;
-
-    if (!callback) {
-      promise = new Promise((resolve, reject) => {
-        callback = shared.callbackPromise(resolve, reject);
-      });
-    }
-
-    let stream = this.createReadStream();
-    let buf = [];
-    let buflen = 0;
-    let returned = false;
-
-    stream.on('readable', () => {
-      let chunk;
-
-      while ((chunk = stream.read()) !== null) {
-        buf.push(chunk);
-        buflen += chunk.length;
-      }
-    });
-
-    stream.once('error', err => {
-      if (returned) {
-        return;
-      }
-      returned = true;
-
-      return callback(err);
-    });
-
-    stream.once('end', chunk => {
-      if (returned) {
-        return;
-      }
-      returned = true;
-
-      if (chunk && chunk.length) {
-        buf.push(chunk);
-        buflen += chunk.length;
-      }
-      return callback(null, Buffer.concat(buf, buflen));
-    });
-
-    return promise;
   }
 
   getTransferEncoding() {
@@ -442,20 +369,20 @@ class MimeNode {
     if (this.content) {
       transferEncoding = (this.getHeader('Content-Transfer-Encoding') || '').toString().toLowerCase().trim();
       if (!transferEncoding || !['base64', 'quoted-printable'].includes(transferEncoding)) {
-        if (/^text\//i.test(contentType)) {
+        // if (/^text\//i.test(contentType)) {
           // If there are no special symbols, no need to modify the text
-          if (this._isPlainText && !this._hasLongLines) {
-            transferEncoding = '7bit';
-          } else if (typeof this.content === 'string' || this.content instanceof Buffer) {
+          // if (this._isPlainText && !this._hasLongLines) {
+          //   transferEncoding = '7bit';
+          // } else if (typeof this.content === 'string' || this.content instanceof Buffer) {
             // detect preferred encoding for string value
             transferEncoding = this._getTextEncoding(this.content) === 'Q' ? 'quoted-printable' : 'base64';
-          } else {
-            // we can not check content for a stream, so either use preferred encoding or fallback to QP
-            transferEncoding = this.transferEncoding === 'B' ? 'base64' : 'quoted-printable';
-          }
-        } else if (!/^(multipart|message)\//i.test(contentType)) {
-          transferEncoding = transferEncoding || 'base64';
-        }
+          // } else {
+          //   we can not check content for a stream, so either use preferred encoding or fallback to QP
+          //   transferEncoding = this.transferEncoding === 'B' ? 'base64' : 'quoted-printable';
+          // }
+        // } else if (!/^(multipart|message)\//i.test(contentType)) {
+        //   transferEncoding = transferEncoding || 'base64';
+        // }
       }
     }
     return transferEncoding;

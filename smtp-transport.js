@@ -1,6 +1,5 @@
 const EventEmitter = require('events');
 const SMTPConnection = require('./smtp-connection');
-const shared = require('./shared');
 
 /**
  * Creates a SMTP transport object for Nodemailer
@@ -55,13 +54,6 @@ class SMTPTransport extends EventEmitter {
 
       let returned = false;
       let options = this.options;
-      // if (socketOptions && socketOptions.connection) {
-      //   // only copy options if we need to modify it
-      //   options = shared.assign(false, options);
-      //   Object.keys(socketOptions).forEach(key => {
-      //     options[key] = socketOptions[key];
-      //   });
-      // }
 
       let connection = new SMTPConnection(options);
 
@@ -117,6 +109,7 @@ class SMTPTransport extends EventEmitter {
           returned = true;
           connection.close();
           if (err) {
+            console.log(err,'err120')
             return callback(err);
           }
           info.envelope = {
@@ -138,7 +131,7 @@ class SMTPTransport extends EventEmitter {
 
         let auth = this.getAuth(mail.data.auth);
 
-        // if (auth && (connection.allowsAuth || options.forceAuth)) {
+        if (auth && (connection.allowsAuth || options.forceAuth)) {
           connection.login(auth, err => {
             if (auth && auth !== this.auth && auth.oauth2) {
               auth.oauth2.removeAllListeners();
@@ -155,9 +148,9 @@ class SMTPTransport extends EventEmitter {
 
             sendMessage();
           });
-        // } else {
-        //   sendMessage();
-        // }
+        } else {
+          sendMessage();
+        }
       });
     });
   }
