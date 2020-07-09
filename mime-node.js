@@ -385,6 +385,8 @@ class MimeNode {
    *
    * @return {String} Compiled message
    */
+  //以 rfc2822 标准创建stream对象
+  //http://blog.chinaunix.net/uid-8532343-id-2029221.html
   createReadStream(options) {
     options = options || {};
 

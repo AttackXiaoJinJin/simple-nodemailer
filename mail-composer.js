@@ -9,6 +9,13 @@ const mimeFuncs = require('./mime-funcs');
  */
 class MailComposer {
   constructor(mail) {
+    //mail:{
+    // from:'xxx', 发送方
+    // to:'xxx', 接收方
+    // subject:'xxx', 标题
+    // content:'xxx', 内容
+    // headers:{},
+    //}
     this.mail = mail || {};
     this.message = false;
   }
@@ -16,13 +23,23 @@ class MailComposer {
   /**
    * Builds MimeNode instance
    */
+  //新建 mimeNode 实例
   compile() {
+    //{
+    // content:'xxxx',
+    // contentTransferEncoding:undefined,
+    // contentType:'text/html;charset=utf-8',
+    // }
     this._alternatives = this.getAlternatives();
+    //value 同 _alternatives
     this._htmlNode = this._alternatives.filter(alternative => /^text\/html\b/i.test(alternative.contentType)).pop();
+    //{attached:[].related:[]}
     this._attachments = this.getAttachments(!!this._htmlNode);
 
     this._useRelated = !!(this._htmlNode && this._attachments.related.length);
+
     this._useAlternative = this._alternatives.length > 1;
+
     this._useMixed = this._attachments.attached.length > 1 || (this._alternatives.length && this._attachments.attached.length === 1);
 
     // Compose MIME tree
@@ -62,7 +79,7 @@ class MailComposer {
 
     // ensure Message-Id value
     this.message.messageId();
-
+    //即 mimeNode 实例
     return this.message;
   }
 

@@ -7,6 +7,7 @@ const Transform = stream.Transform;
  *
  * @param {Object} options Stream options
  */
+//保证数据流的格式正确
 class DataStream extends Transform {
   constructor(options) {
     super(options);

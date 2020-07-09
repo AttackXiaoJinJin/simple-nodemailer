@@ -5,6 +5,8 @@ const net = require('net');
 const DNS_TTL = 5 * 60 * 1000;
 
 const resolver = (family, hostname, callback) => {
+  //使用DNS协议为hostname解析IPv4地址
+  //dns[resolve4]('smtp.exmail.qq.com',()=>{})
   dns['resolve' + family](hostname, (err, addresses) => {
     // if (err) {
     //   switch (err.code) {
@@ -18,14 +20,17 @@ const resolver = (family, hostname, callback) => {
     //   }
     //   return callback(err);
     // }
+    //smtp.exmail.qq.com通过DNS解析有三个ip地址
+    //addrresses=['113.96.208.92','113.96.232.106','113.96.200.115']
     return callback(null, Array.isArray(addresses) ? addresses : [].concat(addresses || []));
   });
 };
-
+//dns缓存
 const dnsCache = (module.exports.dnsCache = new Map());
 
 module.exports.resolveHostname = (options, callback) => {
   resolver(4, options.host, (err, addresses) => {
+    //addresses即为DNS解析后的ip地址
       let value = {
         host: addresses[0] || options.host,
         servername: options.servername || options.host
@@ -46,6 +51,7 @@ module.exports.resolveHostname = (options, callback) => {
  * @param {Function} resolve Function to run if callback is called
  * @param {Function} reject Function to run if callback ends with an error
  */
+//通用的初始化 callbackPromise 函数
 module.exports.callbackPromise = (resolve, reject) =>
   function() {
     let args = Array.from(arguments);

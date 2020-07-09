@@ -8,6 +8,13 @@ class MailMessage {
     });
 
     this.data.headers = {};
+    //data:{
+    // from:'xxx', 发送方
+    // to:'xxx', 接收方
+    // subject:'xxx', 标题
+    // content:'xxx', 内容
+    // headers:{},
+    //}
   }
 
 }

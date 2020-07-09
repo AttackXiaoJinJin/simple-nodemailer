@@ -38,6 +38,7 @@ const GREETING_TIMEOUT = 30 * 1000; // how much to wait after connection is esta
  * @namespace SMTP Client module
  * @param {Object} [options] Option properties
  */
+// smtp连接 实例，注意继承的是 EventEmitter
 class SMTPConnection extends EventEmitter {
   constructor(options) {
     super(options);
@@ -183,6 +184,7 @@ class SMTPConnection extends EventEmitter {
    * Creates a connection to a SMTP server and sets up connection
    * listener
    */
+  //创建smtp服务的连接并建立连接
   connect(connectCallback) {
     if (typeof connectCallback === 'function') {
       this.once('connect', () => {
@@ -192,8 +194,8 @@ class SMTPConnection extends EventEmitter {
     }
 
     let opts = {
-      port: this.port,
-      host: this.host
+      port: this.port, //465
+      host: this.host //smtp.exmail.qq.com
     };
 
     let setupConnectionHandlers = () => {
@@ -205,16 +207,20 @@ class SMTPConnection extends EventEmitter {
     };
 
     return shared.resolveHostname(opts, (err, resolved) => {
+      //执行到这里的时候，dns已经解析完域名了
       if (err) {
         return setImmediate(() => this._onError(err, 'EDNS', false, 'CONN'));
       }
-
+      //resolved:{host:'113.96.232.106',servername:'smtp.exmail.qq.com'} port:465
       Object.keys(resolved).forEach(key => {
         if (key.charAt(0) !== '_' && resolved[key]) {
           opts[key] = resolved[key];
         }
       });
       try {
+        //tls.connect与https.connect的区别：默认情况下不启用SNI（服务器名称指示）扩展名，这可能导致某些服务器返回不正确的证书或完全拒绝连接
+        //http://nodejs.cn/api/tls.html#tls_tls_connect_options_callback
+        //建立tls连接
         this._socket = tls.connect(opts, () => {
           this._socket.setKeepAlive(true);
           this._onConnect();
@@ -253,17 +259,20 @@ class SMTPConnection extends EventEmitter {
   /**
    * Authenticate user
    */
+  //验证用户
   login(authData, callback) {
     this._auth = authData || {};
     // Select SASL authentication method
-
+    //_responseActions的执行时机是等到server连接成功，并发送data后，再执行的
     this._responseActions.push(str => {
       this._actionAUTHComplete(str, callback);
     });
+    //将用户名、密码转为base64并拼接
     this._sendCommand(
       'AUTH PLAIN ' +
       Buffer.from(
         //this._auth.user+'\u0000'+
+        //\u0000 表示空格也就是 空格+用户名+空格+密码
         '\u0000' + // skip authorization identity as it causes problems with some servers
         this._auth.credentials.user +
         '\u0000' +
@@ -299,10 +308,12 @@ class SMTPConnection extends EventEmitter {
 
     let startTime = Date.now();
     this._setEnvelope(envelope, (err, info) => {
+      //这个callback是发送RCPT TO请求后，发送DATA请求时，执行的callback
       if (err) {
         return callback(err);
       }
       let envelopeTime = Date.now();
+      //创建发送流
       let stream = this._createSendStream((err, str) => {
         if (err) {
           return callback(err);
@@ -315,6 +326,7 @@ class SMTPConnection extends EventEmitter {
 
         return callback(null, info);
       });
+        //将发送流导入 可读流ReadStream中
         message.pipe(stream);
     });
   }
@@ -325,6 +337,7 @@ class SMTPConnection extends EventEmitter {
    *
    * @event
    */
+  //当建立与服务器的连接时，运行监听器listener
   _onConnect() {
     clearTimeout(this._connectionTimeout);
     if (this._destroyed) {
@@ -340,7 +353,7 @@ class SMTPConnection extends EventEmitter {
     this._socket.removeListener('timeout', this._onSocketTimeout);
     this._socket.removeListener('close', this._onSocketClose);
     this._socket.removeListener('end', this._onSocketEnd);
-
+    //打开socket的 data listener
     this._socket.on('data', this._onSocketData);
     this._socket.once('close', this._onSocketClose);
     this._socket.once('end', this._onSocketEnd);
@@ -358,6 +371,7 @@ class SMTPConnection extends EventEmitter {
     this._responseActions.push(this._actionGreeting);
 
     // we have a 'data' listener set up so resume socket if it was paused
+    //因为上面打开了data listener，这里就防止_socket休眠
     this._socket.resume();
   }
 
@@ -371,8 +385,12 @@ class SMTPConnection extends EventEmitter {
     if (this._destroyed || !chunk || !chunk.length) {
       return;
     }
-
-    let data = (chunk || '').toString('binary');
+    //接收到server的response的情况
+    //1.建立tls连接成功时 220 smtp.qq.com Esmtp QQ Mail Server
+    //2.发送gretting问候请求时 250-smtp.qq.com 250-PIPELINING 250-SIZE 73400320 250-AUTH LOGIN PLAIN 250-AUTH=LOGIN 250-MAILCOMPRESS 250 8BITMIME
+    //3.发送auth登录验证时 235 Authentication successful
+    //4.发送邮件时 250 Ok: queued as
+    let data = (chunk || '').toString('binary'); //220 smtp.qq.com Esmtp QQ Mail Server
     let lines = (this._remainder + data).split(/\r?\n/);
     let lastline;
 
@@ -539,6 +557,7 @@ class SMTPConnection extends EventEmitter {
    *        or
    *        {from:{address:'...',name:'...'}, to:[address:'...',name:'...']}
    */
+  //创建新的message，从 MAIL FROM开始
   _setEnvelope(envelope, callback) {
     let args = [];
     let useSmtpUtf8 = false;
@@ -563,7 +582,7 @@ class SMTPConnection extends EventEmitter {
     let args = [];
     return args.length ? ' ' + args.join(' ') : '';
   }
-
+  //创建发送流
   _createSendStream(callback) {
     let dataStream = new DataStream();
     let logStream;
@@ -571,7 +590,7 @@ class SMTPConnection extends EventEmitter {
     this._responseActions.push(str => {
       this._actionSMTPStream(str, callback);
     });
-
+    //将TLSSocket写入流，以便边读边写
     dataStream.pipe(this._socket, {
       end: false
     });
@@ -608,6 +627,8 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
+  //当socket.write发送了问候请求后
+  //判断server回复的内容里对登录方式的支持
   _actionEHLO(str) {
     let match;
 
@@ -664,7 +685,8 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
-  _actionMAIL(str, callback) {
+  //发送MAIL FROM请求，判断邮件的发起者是否正常
+  _actionMAIL(str, callback) { //250 Ok
     let message, curRecipient;
     this._recipientQueue = [];
 
@@ -674,7 +696,7 @@ class SMTPConnection extends EventEmitter {
       this._responseActions.push(str => {
         this._actionRCPT(str, callback);
       });
-      this._sendCommand('RCPT TO:<' + curRecipient + '>' + this._getDsnRcptToArgs());
+      this._sendCommand('RCPT TO:<' + curRecipient + '>' + this._getDsnRcptToArgs()); //'RCPT TO:<邮件接收者>'
     }
   }
 
@@ -683,6 +705,7 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
+  //发送RCPT TO请求，判断邮件的接收者是否正常
   _actionRCPT(str, callback) {
     let curRecipient = this._recipientQueue.shift(); //邮箱
     this._envelope.accepted.push(curRecipient);
@@ -702,7 +725,7 @@ class SMTPConnection extends EventEmitter {
       accepted: this._envelope.accepted,
       rejected: this._envelope.rejected
     };
-
+    //执行的是this._setEnvelope的callback
     callback(null, response);
   }
 
@@ -712,9 +735,10 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
+  //发送邮件后的callback
   _actionSMTPStream(str, callback) {
       // Message sent succesfully
-      return callback(null, str);
+      return callback(null, str); //this._createSendStream的callback
   }
 
   _getHostname() {
