@@ -60,7 +60,9 @@ class SMTPTransport extends EventEmitter {
    */
   /*核心函数*/
   //根据data发送email
+  //位置：smtp-transport.js
   send(mail, callback) {
+    //this.options是nodemailer.createTransport中的options
     this.getSocket(this.options, (err, socketOptions) => {
       if (err) {
         return callback(err);
@@ -120,6 +122,7 @@ class SMTPTransport extends EventEmitter {
         if (mail.data.dsn) {
           envelope.dsn = mail.data.dsn;
         }
+        //位置：smtp-transport.js
         //mail.message即处理过的邮件内容
         connection.send(envelope, mail.message.createReadStream(), (err, info) => {
           returned = true;

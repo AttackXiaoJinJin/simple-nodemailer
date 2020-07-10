@@ -221,6 +221,7 @@ class SMTPConnection extends EventEmitter {
         //tls.connect与https.connect的区别：默认情况下不启用SNI（服务器名称指示）扩展名，这可能导致某些服务器返回不正确的证书或完全拒绝连接
         //http://nodejs.cn/api/tls.html#tls_tls_connect_options_callback
         //建立tls连接
+        // opts={host:'113.96.232.106', port:465,servername:'smtp.exmail.qq.com'}
         this._socket = tls.connect(opts, () => {
           this._socket.setKeepAlive(true);
           this._onConnect();
@@ -259,6 +260,7 @@ class SMTPConnection extends EventEmitter {
   /**
    * Authenticate user
    */
+  //位置：smtp-connection.js
   //验证用户
   login(authData, callback) {
     this._auth = authData || {};
@@ -280,7 +282,6 @@ class SMTPConnection extends EventEmitter {
         'utf-8'
       ).toString('base64')
     );
-
   }
 
   /**
@@ -290,6 +291,7 @@ class SMTPConnection extends EventEmitter {
    * @param {Object} message String, Buffer or a Stream
    * @param {Function} callback Callback to return once sending is completed
    */
+  //位置：smtp-connection.js
   send(envelope, message, done) {
     // ensure that callback is only called once
     let returned = false;
@@ -389,8 +391,11 @@ class SMTPConnection extends EventEmitter {
     //1.建立tls连接成功时 220 smtp.qq.com Esmtp QQ Mail Server
     //2.发送gretting问候请求时 250-smtp.qq.com 250-PIPELINING 250-SIZE 73400320 250-AUTH LOGIN PLAIN 250-AUTH=LOGIN 250-MAILCOMPRESS 250 8BITMIME
     //3.发送auth登录验证时 235 Authentication successful
-    //4.发送邮件时 250 Ok: queued as
-    let data = (chunk || '').toString('binary'); //220 smtp.qq.com Esmtp QQ Mail Server
+    //4.发送发件人MAIL FROM时 250 Ok
+    //5.发送收件人列表RCPT TO时 250 Ok
+    //6.发送"DATA" 时 354 End data with <CR><LF>.<CR><LF>
+    //7.发送邮件content时 250 Ok: queued as
+    let data = (chunk || '').toString('binary');
     let lines = (this._remainder + data).split(/\r?\n/);
     let lastline;
 
@@ -535,6 +540,7 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str String to be sent to the server
    */
+  //位置：smtp-connection.js
   _sendCommand(str) {
     if (this._destroyed) {
       // Connection already closed, can't send any more data
@@ -544,7 +550,7 @@ class SMTPConnection extends EventEmitter {
     if (this._socket.destroyed) {
       return this.close();
     }
-
+    //str:DATA
     this._socket.write(Buffer.from(str + '\r\n', 'utf-8'));
   }
 
@@ -557,6 +563,7 @@ class SMTPConnection extends EventEmitter {
    *        or
    *        {from:{address:'...',name:'...'}, to:[address:'...',name:'...']}
    */
+  //位置：smtp-connection.js
   //创建新的message，从 MAIL FROM开始
   _setEnvelope(envelope, callback) {
     let args = [];
@@ -582,6 +589,7 @@ class SMTPConnection extends EventEmitter {
     let args = [];
     return args.length ? ' ' + args.join(' ') : '';
   }
+  //位置：smtp-connection.js
   //创建发送流
   _createSendStream(callback) {
     let dataStream = new DataStream();
@@ -612,6 +620,7 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
+  //位置：smtp-connection.js
   _actionGreeting(str) {
     clearTimeout(this._greetingTimeout);
 
@@ -627,6 +636,7 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
+  //位置：smtp-connection.js
   //当socket.write发送了问候请求后
   //判断server回复的内容里对登录方式的支持
   _actionEHLO(str) {
@@ -705,7 +715,8 @@ class SMTPConnection extends EventEmitter {
    *
    * @param {String} str Message from the server
    */
-  //发送RCPT TO请求，判断邮件的接收者是否正常
+  //位置：smtp-connection.js
+  //发送RCPT TO请求成功后，发起DATA请求
   _actionRCPT(str, callback) {
     let curRecipient = this._recipientQueue.shift(); //邮箱
     this._envelope.accepted.push(curRecipient);

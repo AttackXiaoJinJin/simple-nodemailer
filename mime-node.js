@@ -385,6 +385,7 @@ class MimeNode {
    *
    * @return {String} Compiled message
    */
+  //位置：mime-node.js
   //以 rfc2822 标准创建stream对象
   //http://blog.chinaunix.net/uid-8532343-id-2029221.html
   createReadStream(options) {
@@ -425,7 +426,7 @@ class MimeNode {
 
     return outputStream;
   }
-
+  //位置：mime-node.js
   stream(outputStream, options, done) {
     let transferEncoding = this.getTransferEncoding();
     let contentStream;

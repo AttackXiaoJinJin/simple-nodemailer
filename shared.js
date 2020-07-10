@@ -3,23 +3,11 @@ const dns = require('dns');
 const net = require('net');
 
 const DNS_TTL = 5 * 60 * 1000;
-
+//1.DNS解析域名，获取ip
 const resolver = (family, hostname, callback) => {
   //使用DNS协议为hostname解析IPv4地址
   //dns[resolve4]('smtp.exmail.qq.com',()=>{})
   dns['resolve' + family](hostname, (err, addresses) => {
-    // if (err) {
-    //   switch (err.code) {
-    //     case dns.NODATA:
-    //     case dns.NOTFOUND:
-    //     case dns.NOTIMP:
-    //     case dns.SERVFAIL:
-    //     case dns.CONNREFUSED:
-    //     case 'EAI_AGAIN':
-    //       return callback(null, []);
-    //   }
-    //   return callback(err);
-    // }
     //smtp.exmail.qq.com通过DNS解析有三个ip地址
     //addrresses=['113.96.208.92','113.96.232.106','113.96.200.115']
     return callback(null, Array.isArray(addresses) ? addresses : [].concat(addresses || []));
